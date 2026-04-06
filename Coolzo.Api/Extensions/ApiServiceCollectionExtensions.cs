@@ -1,14 +1,21 @@
 using Asp.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
+using System.Text.Json;
 
 namespace Coolzo.Api.Extensions;
 
 public static class ApiServiceCollectionExtensions
 {
-    public static IServiceCollection AddPresentation(this IServiceCollection services)
+        public static IServiceCollection AddPresentation(this IServiceCollection services)
     {
-        services.AddControllers();
+        // Ensure API JSON uses camelCase property names to match frontend TypeScript models
+        services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                options.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+            });
         services.AddEndpointsApiExplorer();
         services.AddApiVersioning(options =>
         {
