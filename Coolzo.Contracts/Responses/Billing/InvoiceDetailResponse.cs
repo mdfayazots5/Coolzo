@@ -1,0 +1,25 @@
+namespace Coolzo.Contracts.Responses.Billing;
+
+public sealed record InvoiceDetailResponse(
+    long InvoiceId,
+    string InvoiceNumber,
+    long QuotationId,
+    string QuotationNumber,
+    long CustomerId,
+    string CustomerName,
+    string MobileNumber,
+    string AddressSummary,
+    string ServiceName,
+    string CurrentStatus,
+    DateTime InvoiceDateUtc,
+    decimal SubTotalAmount,
+    decimal DiscountAmount,
+    decimal TaxPercentage,
+    decimal TaxAmount,
+    decimal GrandTotalAmount,
+    decimal PaidAmount,
+    decimal BalanceAmount,
+    DateTime? LastPaymentDateUtc,
+    IReadOnlyCollection<InvoiceLineResponse> Lines,
+    IReadOnlyCollection<PaymentTransactionResponse> Payments,
+    IReadOnlyCollection<BillingStatusHistoryResponse> BillingHistory);

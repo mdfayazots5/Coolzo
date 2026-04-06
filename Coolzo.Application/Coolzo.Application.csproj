@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.9.0" />
+    <PackageReference Include="MediatR" Version="12.4.1" />
+    <ProjectReference Include="..\Coolzo.Domain\Coolzo.Domain.csproj" />
+    <ProjectReference Include="..\Coolzo.Contracts\Coolzo.Contracts.csproj" />
+    <ProjectReference Include="..\Coolzo.Shared\Coolzo.Shared.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

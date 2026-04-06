@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Coolzo.Worker-df5c48b0-2272-4e1f-9680-5d4da83d658c</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Coolzo.Application\Coolzo.Application.csproj" />
+    <ProjectReference Include="..\Coolzo.Infrastructure\Coolzo.Infrastructure.csproj" />
+    <ProjectReference Include="..\Coolzo.Persistence\Coolzo.Persistence.csproj" />
+    <ProjectReference Include="..\Coolzo.Shared\Coolzo.Shared.csproj" />
+  </ItemGroup>
+</Project>
