@@ -26,6 +26,10 @@ public sealed class Booking : AuditableEntity
 
     public bool IsGuestBooking { get; set; }
 
+    public bool IsEmergency { get; set; }
+
+    public decimal EmergencySurchargeAmount { get; set; }
+
     public string CustomerNameSnapshot { get; set; } = string.Empty;
 
     public string MobileNumberSnapshot { get; set; } = string.Empty;

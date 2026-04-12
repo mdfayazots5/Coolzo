@@ -10,4 +10,6 @@ public sealed record BookingSummaryResponse(
     DateOnly SlotDate,
     string SlotLabel,
     string AddressSummary,
-    decimal EstimatedPrice);
+    decimal EstimatedPrice,
+    bool IsEmergency,
+    decimal EmergencySurchargeAmount);

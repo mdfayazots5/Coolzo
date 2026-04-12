@@ -85,6 +85,8 @@ public sealed class BookingController : ApiControllerBase
                 request.ModelName,
                 request.IssueNotes,
                 request.SourceChannel,
+                request.IsEmergency,
+                request.EmergencySurchargeAmount,
                 idempotencyKey),
             cancellationToken);
 

@@ -12,4 +12,12 @@ public sealed record BookingListItemResponse(
     string SourceChannel,
     DateTime BookingDateUtc,
     string? OperationalStatus,
-    string? AssignedTechnicianName);
+    string? AssignedTechnicianName,
+    long? AssignedTechnicianId,
+    string AddressSummary,
+    decimal EstimatedPrice,
+    bool IsEmergency,
+    decimal EmergencySurchargeAmount,
+    long? QuotationId,
+    string? QuotationStatus,
+    decimal? InvoiceGrandTotalAmount);

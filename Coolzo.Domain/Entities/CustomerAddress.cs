@@ -18,7 +18,15 @@ public sealed class CustomerAddress : AuditableEntity
 
     public string CityName { get; set; } = string.Empty;
 
+    public string StateName { get; set; } = string.Empty;
+
     public string Pincode { get; set; } = string.Empty;
+
+    public string AddressType { get; set; } = string.Empty;
+
+    public double? Latitude { get; set; }
+
+    public double? Longitude { get; set; }
 
     public bool IsDefault { get; set; }
 

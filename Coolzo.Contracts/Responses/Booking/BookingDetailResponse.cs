@@ -9,6 +9,8 @@ public sealed record BookingDetailResponse(
     string SourceChannel,
     bool IsGuestBooking,
     DateTime BookingDateUtc,
+    bool IsEmergency,
+    decimal EmergencySurchargeAmount,
     string ServiceName,
     string CustomerName,
     string MobileNumber,

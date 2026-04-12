@@ -18,5 +18,7 @@ public sealed record CustomerBookingCreateRequest
     string? AddressLabel,
     string? ModelName,
     string? IssueNotes,
-    string SourceChannel
+    string SourceChannel,
+    bool IsEmergency,
+    decimal? EmergencySurchargeAmount
 );

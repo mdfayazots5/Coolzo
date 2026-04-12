@@ -23,7 +23,9 @@ internal static class BookingResponseMapper
             slotDate,
             slotLabel,
             BuildAddressSummary(booking),
-            booking.EstimatedPrice);
+            booking.EstimatedPrice,
+            booking.IsEmergency,
+            booking.EmergencySurchargeAmount);
     }
 
     public static BookingDetailResponse ToDetail(
@@ -45,6 +47,8 @@ internal static class BookingResponseMapper
             booking.SourceChannel.ToString(),
             booking.IsGuestBooking,
             booking.BookingDateUtc,
+            booking.IsEmergency,
+            booking.EmergencySurchargeAmount,
             booking.ServiceNameSnapshot,
             booking.CustomerNameSnapshot,
             booking.MobileNumberSnapshot,
@@ -101,6 +105,11 @@ internal static class BookingResponseMapper
     {
         var slotDate = booking.SlotAvailability?.SlotDate ?? DateOnly.FromDateTime(booking.BookingDateUtc);
         var slotLabel = booking.SlotAvailability?.SlotConfiguration?.SlotLabel ?? "Preferred Slot";
+        var quotation = booking.ServiceRequest?.JobCard?.Quotations
+            .Where(item => !item.IsDeleted)
+            .OrderByDescending(item => item.QuotationDateUtc)
+            .FirstOrDefault();
+        var invoice = quotation?.InvoiceHeader is { IsDeleted: false } ? quotation.InvoiceHeader : null;
 
         return new BookingListItemResponse(
             booking.BookingId,
@@ -114,7 +123,15 @@ internal static class BookingResponseMapper
             booking.SourceChannel.ToString(),
             booking.BookingDateUtc,
             booking.ServiceRequest?.CurrentStatus.ToString(),
-            GetActiveAssignment(booking)?.Technician?.TechnicianName);
+            GetActiveAssignment(booking)?.Technician?.TechnicianName,
+            GetActiveAssignment(booking)?.TechnicianId,
+            BuildAddressSummary(booking),
+            booking.EstimatedPrice,
+            booking.IsEmergency,
+            booking.EmergencySurchargeAmount,
+            quotation?.QuotationHeaderId,
+            quotation?.CurrentStatus.ToString(),
+            invoice?.GrandTotalAmount);
     }
 
     private static string BuildAddressSummary(DomainBooking booking)

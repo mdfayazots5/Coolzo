@@ -39,6 +39,20 @@ public sealed class CoolzoDbContext : DbContext
 
     public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
 
+    public DbSet<CustomerEquipment> CustomerEquipments => Set<CustomerEquipment>();
+
+    public DbSet<CustomerNotification> CustomerNotifications => Set<CustomerNotification>();
+
+    public DbSet<PromotionalOffer> PromotionalOffers => Set<PromotionalOffer>();
+
+    public DbSet<CustomerReferral> CustomerReferrals => Set<CustomerReferral>();
+
+    public DbSet<CustomerLoyaltyTransaction> CustomerLoyaltyTransactions => Set<CustomerLoyaltyTransaction>();
+
+    public DbSet<CustomerReview> CustomerReviews => Set<CustomerReview>();
+
+    public DbSet<CustomerAppFeedback> CustomerAppFeedbacks => Set<CustomerAppFeedback>();
+
     public DbSet<Lead> Leads => Set<Lead>();
 
     public DbSet<LeadSource> LeadSources => Set<LeadSource>();

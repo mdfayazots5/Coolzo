@@ -21,4 +21,6 @@ public sealed record CreateCustomerBookingCommand(
     string? ModelName,
     string? IssueNotes,
     string SourceChannel,
+    bool IsEmergency,
+    decimal? EmergencySurchargeAmount,
     string? IdempotencyKey) : IRequest<BookingSummaryResponse>;

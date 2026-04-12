@@ -17,7 +17,11 @@ public sealed class CustomerAddressConfiguration : IEntityTypeConfiguration<Cust
         builder.Property(entity => entity.AddressLine2).HasMaxLength(256).IsRequired();
         builder.Property(entity => entity.Landmark).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.CityName).HasMaxLength(128).IsRequired();
+        builder.Property(entity => entity.StateName).HasMaxLength(128).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.Pincode).HasMaxLength(16).IsRequired();
+        builder.Property(entity => entity.AddressType).HasMaxLength(32).HasDefaultValue(string.Empty);
+        builder.Property(entity => entity.Latitude);
+        builder.Property(entity => entity.Longitude);
         builder.Property(entity => entity.IsDefault).HasDefaultValue(false);
         builder.Property(entity => entity.IsActive).HasDefaultValue(true);
 

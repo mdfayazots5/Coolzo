@@ -21,6 +21,7 @@ public static class PersistenceServiceCollectionExtensions
 
         services.AddScoped<IBookingLookupRepository, BookingLookupRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<ICustomerAppRepository, CustomerAppRepository>();
         services.AddScoped<IAnalyticsReadRepository, AnalyticsReadRepository>();
         services.AddScoped<IAmcRepository, AmcRepository>();
         services.AddScoped<IBillingRepository, BillingRepository>();

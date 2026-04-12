@@ -17,6 +17,8 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Property(entity => entity.BookingDateUtc);
         builder.Property(entity => entity.BookingStatus).HasConversion<int>();
         builder.Property(entity => entity.SourceChannel).HasConversion<int>();
+        builder.Property(entity => entity.IsEmergency).HasDefaultValue(false);
+        builder.Property(entity => entity.EmergencySurchargeAmount).HasColumnType("money").HasDefaultValue(0);
         builder.Property(entity => entity.CustomerNameSnapshot).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.MobileNumberSnapshot).HasMaxLength(32).IsRequired();
         builder.Property(entity => entity.EmailAddressSnapshot).HasMaxLength(128).IsRequired();

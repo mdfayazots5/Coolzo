@@ -1,7 +1,9 @@
 using Asp.Versioning;
+using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Application.Features.Booking.Queries.GetCustomerBookingDetail;
 using Coolzo.Application.Features.Booking.Queries.GetCustomerBookings;
 using Coolzo.Contracts.Common;
+using Coolzo.Contracts.Requests.Customer;
 using Coolzo.Contracts.Responses.Booking;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -41,6 +43,30 @@ public sealed class CustomerBookingController : ApiControllerBase
     {
         var response = await _sender.Send(new GetCustomerBookingsQuery(pageNumber, pageSize), cancellationToken);
 
+        return Success(response);
+    }
+
+    [HttpPost("{bookingId:long}/reschedule")]
+    [ProducesResponseType(typeof(ApiResponse<BookingDetailResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<BookingDetailResponse>>> RescheduleCustomerBookingAsync(
+        [FromRoute] long bookingId,
+        [FromBody] RescheduleCustomerBookingRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new RescheduleMyCustomerBookingCommand(bookingId, request.SlotAvailabilityId, request.Remarks),
+            cancellationToken);
+
+        return Success(response, "Customer booking rescheduled successfully.");
+    }
+
+    [HttpGet("{bookingId:long}/service-report")]
+    [ProducesResponseType(typeof(ApiResponse<BookingDetailResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<BookingDetailResponse>>> GetServiceReportAsync(
+        [FromRoute] long bookingId,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetCustomerBookingDetailQuery(bookingId), cancellationToken);
         return Success(response);
     }
 }

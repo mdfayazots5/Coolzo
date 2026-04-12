@@ -164,6 +164,8 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
             BookingStatus = BookingStatus.Confirmed,
             SourceChannel = sourceChannel,
             IsGuestBooking = false,
+            IsEmergency = request.IsEmergency,
+            EmergencySurchargeAmount = request.EmergencySurchargeAmount ?? 0,
             CustomerNameSnapshot = customer.CustomerName,
             MobileNumberSnapshot = customer.MobileNumber,
             EmailAddressSnapshot = customer.EmailAddress,
@@ -174,7 +176,7 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
             PincodeSnapshot = customerAddress.Pincode,
             ZoneNameSnapshot = zone.ZoneName,
             ServiceNameSnapshot = service.ServiceName,
-            EstimatedPrice = service.BasePrice,
+            EstimatedPrice = service.BasePrice + (request.EmergencySurchargeAmount ?? 0),
             CreatedBy = _currentUserContext.UserName,
             DateCreated = _currentDateTime.UtcNow,
             IPAddress = _currentUserContext.IPAddress
@@ -189,8 +191,8 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
             ModelName = request.ModelName?.Trim() ?? string.Empty,
             IssueNotes = request.IssueNotes?.Trim() ?? string.Empty,
             Quantity = 1,
-            UnitPrice = service.BasePrice,
-            LineTotal = service.BasePrice,
+            UnitPrice = service.BasePrice + (request.EmergencySurchargeAmount ?? 0),
+            LineTotal = service.BasePrice + (request.EmergencySurchargeAmount ?? 0),
             CreatedBy = _currentUserContext.UserName,
             DateCreated = _currentDateTime.UtcNow,
             IPAddress = _currentUserContext.IPAddress

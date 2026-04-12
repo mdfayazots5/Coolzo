@@ -23,6 +23,7 @@ public sealed class CreateCustomerBookingCommandValidator : AbstractValidator<Cr
         RuleFor(request => request.AddressLabel).MaximumLength(64);
         RuleFor(request => request.ModelName).MaximumLength(128);
         RuleFor(request => request.IssueNotes).MaximumLength(512);
+        RuleFor(request => request.EmergencySurchargeAmount).GreaterThanOrEqualTo(0).When(request => request.EmergencySurchargeAmount.HasValue);
         RuleFor(request => request.IdempotencyKey).MaximumLength(128);
         RuleFor(request => request.SourceChannel)
             .NotEmpty()
