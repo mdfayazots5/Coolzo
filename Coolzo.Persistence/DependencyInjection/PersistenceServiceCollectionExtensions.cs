@@ -21,21 +21,25 @@ public static class PersistenceServiceCollectionExtensions
 
         services.AddScoped<IBookingLookupRepository, BookingLookupRepository>();
         services.AddScoped<IBookingRepository, BookingRepository>();
+        services.AddScoped<ICustomerManagementRepository, CustomerManagementRepository>();
         services.AddScoped<ICustomerAppRepository, CustomerAppRepository>();
         services.AddScoped<IAnalyticsReadRepository, AnalyticsReadRepository>();
         services.AddScoped<IAmcRepository, AmcRepository>();
         services.AddScoped<IBillingRepository, BillingRepository>();
+        services.AddScoped<IFieldWorkflowRepository, FieldWorkflowRepository>();
         services.AddScoped<IFieldLookupRepository, FieldLookupRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
         services.AddScoped<IGapPhaseARepository, GapPhaseARepository>();
         services.AddScoped<IGapPhaseERepository, GapPhaseERepository>();
         services.AddScoped<IInstallationLifecycleRepository, InstallationLifecycleRepository>();
+        services.AddScoped<ISchedulingRepository, SchedulingRepository>();
         services.AddScoped<ISupportTicketRepository, SupportTicketRepository>();
         services.AddScoped<IServiceRequestRepository, ServiceRequestRepository>();
         services.AddScoped<ITechnicianRepository, TechnicianRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IPermissionRepository, PermissionRepository>();
+        services.AddScoped<IOtpVerificationRepository, OtpVerificationRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IUserSessionRepository, UserSessionRepository>();
         services.AddScoped<IUserPasswordHistoryRepository, UserPasswordHistoryRepository>();

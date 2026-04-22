@@ -15,3 +15,17 @@ public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
             .MaximumLength(512);
     }
 }
+
+public sealed class LoginFieldCommandValidator : AbstractValidator<LoginFieldCommand>
+{
+    public LoginFieldCommandValidator()
+    {
+        RuleFor(request => request.EmployeeId)
+            .NotEmpty()
+            .MaximumLength(128);
+
+        RuleFor(request => request.Pin)
+            .NotEmpty()
+            .MaximumLength(512);
+    }
+}

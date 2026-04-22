@@ -7,7 +7,10 @@ public sealed record UserResponse
     string Email,
     string FullName,
     bool IsActive,
+    int BranchId,
     IReadOnlyCollection<long> RoleIds,
     IReadOnlyCollection<string> Roles,
-    DateTime DateCreated
+    DateTime DateCreated,
+    DateTime? LastLoginDateUtc,
+    bool MustChangePassword
 );

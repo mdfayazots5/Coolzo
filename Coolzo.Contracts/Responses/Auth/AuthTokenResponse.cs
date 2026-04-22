@@ -5,5 +5,6 @@ public sealed record AuthTokenResponse
     string AccessToken,
     string RefreshToken,
     DateTime ExpiresAtUtc,
-    CurrentUserResponse CurrentUser
+    CurrentUserResponse CurrentUser,
+    bool RequiresTwoFactor = false
 );

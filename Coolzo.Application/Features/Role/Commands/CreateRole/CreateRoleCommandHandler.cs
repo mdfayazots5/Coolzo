@@ -100,7 +100,8 @@ public sealed class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand
             role.DisplayName,
             role.Description,
             role.IsActive,
+            0,
             permissions.Select(permission => permission.PermissionId).ToArray(),
-            permissions.Select(permission => permission.DisplayName).ToArray());
+            permissions.Select(permission => permission.PermissionName).ToArray());
     }
 }

@@ -63,6 +63,26 @@ public sealed class HelperController : ApiControllerBase
         return Success(response);
     }
 
+    [Authorize(Policy = PermissionNames.UserUpdate)]
+    [HttpPut("{helperProfileId:long}")]
+    [ProducesResponseType(typeof(ApiResponse<HelperDetailResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<HelperDetailResponse>>> UpdateAsync(
+        [FromRoute] long helperProfileId,
+        [FromBody] UpdateHelperProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new UpdateHelperProfileCommand(
+                helperProfileId,
+                request.HelperCode,
+                request.HelperName,
+                request.MobileNo,
+                request.ActiveFlag),
+            cancellationToken);
+
+        return Success(response, "Helper profile updated successfully.");
+    }
+
     [Authorize(Policy = PermissionNames.AssignmentManage)]
     [HttpPost("{helperProfileId:long}/assign")]
     [ProducesResponseType(typeof(ApiResponse<HelperDetailResponse>), StatusCodes.Status200OK)]

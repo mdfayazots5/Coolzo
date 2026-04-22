@@ -1,10 +1,14 @@
 using Asp.Versioning;
+using Coolzo.Application.Features.OperationsDashboard.Queries.GetDashboardSummary;
 using Coolzo.Application.Features.ServiceRequest.Commands.CreateServiceRequestFromBooking;
+using Coolzo.Application.Features.ServiceRequest.Commands.SaveServiceRequestNote;
 using Coolzo.Application.Features.ServiceRequest.Commands.UpdateServiceRequestStatus;
 using Coolzo.Application.Features.ServiceRequest.Queries.GetServiceRequestDetail;
 using Coolzo.Application.Features.ServiceRequest.Queries.GetServiceRequestList;
 using Coolzo.Contracts.Common;
+using Coolzo.Contracts.Requests.FieldExecution;
 using Coolzo.Contracts.Requests.Operations;
+using Coolzo.Contracts.Responses.FieldExecution;
 using Coolzo.Contracts.Responses.Operations;
 using Coolzo.Shared.Constants;
 using MediatR;
@@ -55,6 +59,17 @@ public sealed class ServiceRequestController : ApiControllerBase
         return Success(response);
     }
 
+    [Authorize(Policy = PermissionNames.OperationsDashboardRead)]
+    [HttpGet("dashboard-summary")]
+    [ProducesResponseType(typeof(ApiResponse<OperationsDashboardSummaryResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<OperationsDashboardSummaryResponse>>> GetDashboardSummaryAsync(
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetDashboardSummaryQuery(), cancellationToken);
+
+        return Success(response);
+    }
+
     [Authorize(Policy = PermissionNames.ServiceRequestRead)]
     [HttpGet("{serviceRequestId:long}")]
     [ProducesResponseType(typeof(ApiResponse<ServiceRequestDetailResponse>), StatusCodes.Status200OK)]
@@ -65,6 +80,21 @@ public sealed class ServiceRequestController : ApiControllerBase
         var response = await _sender.Send(new GetServiceRequestDetailQuery(serviceRequestId), cancellationToken);
 
         return Success(response);
+    }
+
+    [Authorize(Policy = PermissionNames.ServiceRequestUpdate)]
+    [HttpPost("{serviceRequestId:long}/notes")]
+    [ProducesResponseType(typeof(ApiResponse<JobExecutionNoteResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<JobExecutionNoteResponse>>> SaveNoteAsync(
+        [FromRoute] long serviceRequestId,
+        [FromBody] SaveJobExecutionNoteRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new SaveServiceRequestNoteCommand(serviceRequestId, request.NoteText, request.IsCustomerVisible),
+            cancellationToken);
+
+        return Success(response, "Service request note saved successfully.");
     }
 
     [Authorize(Policy = PermissionNames.ServiceRequestUpdate)]

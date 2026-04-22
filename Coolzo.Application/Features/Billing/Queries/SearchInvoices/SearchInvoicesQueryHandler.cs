@@ -20,8 +20,8 @@ public sealed class SearchInvoicesQueryHandler : IRequestHandler<SearchInvoicesQ
     public async Task<PagedResult<InvoiceListItemResponse>> Handle(SearchInvoicesQuery request, CancellationToken cancellationToken)
     {
         var status = ParseStatus(request.Status);
-        var invoices = await _billingRepository.SearchInvoicesAsync(status, null, request.PageNumber, request.PageSize, cancellationToken);
-        var totalCount = await _billingRepository.CountInvoicesAsync(status, null, cancellationToken);
+        var invoices = await _billingRepository.SearchInvoicesAsync(status, request.CustomerId, request.PageNumber, request.PageSize, cancellationToken);
+        var totalCount = await _billingRepository.CountInvoicesAsync(status, request.CustomerId, cancellationToken);
 
         return new PagedResult<InvoiceListItemResponse>(
             invoices.Select(BillingResponseMapper.ToInvoiceListItem).ToArray(),

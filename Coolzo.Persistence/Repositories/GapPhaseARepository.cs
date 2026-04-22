@@ -573,6 +573,25 @@ public sealed class GapPhaseARepository : IGapPhaseARepository
         return _dbContext.SystemAlerts.AddAsync(systemAlert, cancellationToken).AsTask();
     }
 
+    public async Task<IReadOnlyCollection<SystemAlert>> GetOpenAlertsAsync(string? relatedEntityName, CancellationToken cancellationToken)
+    {
+        var query = _dbContext.SystemAlerts
+            .AsNoTracking()
+            .Where(entity => !entity.IsDeleted && entity.AlertStatus == SystemAlertStatus.Open);
+
+        if (!string.IsNullOrWhiteSpace(relatedEntityName))
+        {
+            var normalizedEntityName = relatedEntityName.Trim();
+            query = query.Where(entity => entity.RelatedEntityName == normalizedEntityName);
+        }
+
+        return await query
+            .OrderByDescending(entity => entity.Severity)
+            .ThenBy(entity => entity.SlaDueDateUtc)
+            .ThenBy(entity => entity.SystemAlertId)
+            .ToArrayAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyCollection<SystemAlert>> GetOpenAlertsDueAsync(DateTime utcNow, CancellationToken cancellationToken)
     {
         return await _dbContext.SystemAlerts

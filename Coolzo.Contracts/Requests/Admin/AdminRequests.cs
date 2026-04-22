@@ -33,6 +33,25 @@ public sealed record DynamicMasterRecordUpsertRequest(
     bool IsPublished,
     int SortOrder);
 
+public sealed record MasterCatalogRecordUpsertRequest(
+    long? DynamicMasterRecordId,
+    string MasterCode,
+    string MasterLabel,
+    string MasterValue,
+    string? Description,
+    bool IsActive,
+    bool IsPublished,
+    int SortOrder);
+
+public sealed record ConfigurationRecordUpsertRequest(
+    long? SystemConfigurationId,
+    string ConfigurationKey,
+    string ConfigurationValue,
+    string ValueType,
+    string? Description,
+    bool IsSensitive,
+    bool IsActive);
+
 public sealed record CMSBlockUpsertRequest(
     string BlockKey,
     string Title,

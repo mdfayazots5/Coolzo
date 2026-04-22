@@ -3,6 +3,7 @@ using Coolzo.Application.Common.Interfaces;
 using Coolzo.Application.Common.Security;
 using Coolzo.Application.Common.Services;
 using Coolzo.Application.Features.Billing;
+using Coolzo.Application.Features.Auth.Commands.AuthSession;
 using Coolzo.Application.Features.Amc;
 using Coolzo.Application.Features.Inventory;
 using Coolzo.Application.Features.Support;
@@ -50,6 +51,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<ITechnicianJobAccessService, TechnicianJobAccessService>();
         services.AddScoped<ICustomerPasswordPolicyService, CustomerPasswordPolicyService>();
         services.AddScoped<AuthenticatedUserProfileFactory>();
+        services.AddScoped<AuthSessionTokenIssuer>();
         services.AddScoped<CustomerAccountLookupService>();
         services.AddScoped<CustomerAccountProvisioningService>();
 

@@ -27,10 +27,14 @@ public sealed class GetRolesQueryHandler : IRequestHandler<GetRolesQuery, PagedR
                     role.DisplayName,
                     role.Description,
                     role.IsActive,
+                    role.UserRoles.Count(userRole =>
+                        !userRole.IsDeleted &&
+                        userRole.User is not null &&
+                        !userRole.User.IsDeleted),
                     role.RolePermissions.Select(rolePermission => rolePermission.PermissionId).ToArray(),
                     role.RolePermissions
                         .Where(rolePermission => rolePermission.Permission is not null)
-                        .Select(rolePermission => rolePermission.Permission!.DisplayName)
+                        .Select(rolePermission => rolePermission.Permission!.PermissionName)
                         .ToArray()))
                 .ToArray(),
             totalCount,

@@ -37,4 +37,20 @@ public sealed class RefreshTokenRepository : IRefreshTokenRepository
                             .ThenInclude(rolePermission => rolePermission.Permission)
             .FirstOrDefaultAsync(token => token.TokenValue == refreshToken && !token.IsDeleted, cancellationToken);
     }
+
+    public Task<int> RevokeActiveByUserIdAsync(long userId, DateTime revokedAtUtc, string revokedBy, CancellationToken cancellationToken)
+    {
+        return _dbContext.RefreshTokens
+            .Where(refreshToken => refreshToken.UserId == userId &&
+                !refreshToken.IsDeleted &&
+                !refreshToken.IsRevoked &&
+                refreshToken.ExpiresAtUtc > revokedAtUtc)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(refreshToken => refreshToken.IsRevoked, true)
+                    .SetProperty(refreshToken => refreshToken.RevokedAtUtc, revokedAtUtc)
+                    .SetProperty(refreshToken => refreshToken.UpdatedBy, revokedBy)
+                    .SetProperty(refreshToken => refreshToken.LastUpdated, revokedAtUtc),
+                cancellationToken);
+    }
 }

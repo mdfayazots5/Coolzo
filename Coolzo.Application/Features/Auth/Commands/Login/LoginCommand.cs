@@ -4,3 +4,5 @@ using MediatR;
 namespace Coolzo.Application.Features.Auth.Commands.Login;
 
 public sealed record LoginCommand(string UserNameOrEmail, string Password) : IRequest<AuthTokenResponse>;
+
+public sealed record LoginFieldCommand(string EmployeeId, string Pin) : IRequest<AuthTokenResponse>;

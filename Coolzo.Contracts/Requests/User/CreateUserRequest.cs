@@ -7,5 +7,6 @@ public sealed record CreateUserRequest
     string FullName,
     string Password,
     bool IsActive,
-    IReadOnlyCollection<long> RoleIds
+    IReadOnlyCollection<long> RoleIds,
+    int? BranchId
 );

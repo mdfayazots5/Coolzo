@@ -17,6 +17,6 @@ public sealed class OtpVerificationConfiguration : IEntityTypeConfiguration<OtpV
 
         builder.HasIndex(entity => entity.UserId).HasDatabaseName("IDX_tblOtpVerification_UserId");
 
-        builder.ConfigureAuditColumns();
+        builder.ConfigureAuditColumns(includeBranchId: false);
     }
 }

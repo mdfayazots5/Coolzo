@@ -68,6 +68,7 @@ public sealed class AuthenticatedUserProfileFactory
                 user.FullName,
                 technicianId,
                 helperProfileId,
+                user.BranchId,
                 roles,
                 permissions,
                 customerId,

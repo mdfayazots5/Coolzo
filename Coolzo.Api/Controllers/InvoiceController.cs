@@ -41,11 +41,12 @@ public sealed class InvoiceController : ApiControllerBase
     [ProducesResponseType(typeof(ApiResponse<PagedResult<InvoiceListItemResponse>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<PagedResult<InvoiceListItemResponse>>>> SearchAsync(
         [FromQuery] string? status,
+        [FromQuery] long? customerId,
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        var response = await _sender.Send(new SearchInvoicesQuery(status, pageNumber, pageSize), cancellationToken);
+        var response = await _sender.Send(new SearchInvoicesQuery(status, customerId, pageNumber, pageSize), cancellationToken);
 
         return Success(response);
     }

@@ -75,6 +75,12 @@ public sealed class CoolzoDbContext : DbContext
 
     public DbSet<JobAttachment> JobAttachments => Set<JobAttachment>();
 
+    public DbSet<JobReport> JobReports => Set<JobReport>();
+
+    public DbSet<JobPhoto> JobPhotos => Set<JobPhoto>();
+
+    public DbSet<CustomerSignature> CustomerSignatures => Set<CustomerSignature>();
+
     public DbSet<JobCard> JobCards => Set<JobCard>();
 
     public DbSet<JobChecklistResponse> JobChecklistResponses => Set<JobChecklistResponse>();
@@ -108,6 +114,10 @@ public sealed class CoolzoDbContext : DbContext
     public DbSet<QuotationHeader> QuotationHeaders => Set<QuotationHeader>();
 
     public DbSet<QuotationLine> QuotationLines => Set<QuotationLine>();
+
+    public DbSet<PartsRequest> PartsRequests => Set<PartsRequest>();
+
+    public DbSet<PartsRequestItem> PartsRequestItems => Set<PartsRequestItem>();
 
     public DbSet<Role> Roles => Set<Role>();
 
@@ -183,7 +193,19 @@ public sealed class CoolzoDbContext : DbContext
 
     public DbSet<Technician> Technicians => Set<Technician>();
 
+    public DbSet<TechnicianSkill> TechnicianSkills => Set<TechnicianSkill>();
+
+    public DbSet<TechnicianZone> TechnicianZones => Set<TechnicianZone>();
+
     public DbSet<TechnicianAvailability> TechnicianAvailabilities => Set<TechnicianAvailability>();
+
+    public DbSet<TechnicianShift> TechnicianShifts => Set<TechnicianShift>();
+
+    public DbSet<TechnicianAttendance> TechnicianAttendances => Set<TechnicianAttendance>();
+
+    public DbSet<TechnicianGpsLog> TechnicianGpsLogs => Set<TechnicianGpsLog>();
+
+    public DbSet<TechnicianPerformanceSummary> TechnicianPerformanceSummaries => Set<TechnicianPerformanceSummary>();
 
     public DbSet<TechnicianDocument> TechnicianDocuments => Set<TechnicianDocument>();
 

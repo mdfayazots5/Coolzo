@@ -7,6 +7,12 @@ public sealed record CreateHelperProfileRequest(
     string MobileNo,
     bool ActiveFlag);
 
+public sealed record UpdateHelperProfileRequest(
+    string HelperCode,
+    string HelperName,
+    string MobileNo,
+    bool ActiveFlag);
+
 public sealed record AssignHelperToJobRequest(
     long TechnicianId,
     long ServiceRequestId,

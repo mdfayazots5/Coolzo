@@ -1,5 +1,6 @@
 using Coolzo.Application.Common.Interfaces;
 using Coolzo.Application.Common.Security;
+using Coolzo.Application.Features.Auth.Commands.AuthSession;
 using Coolzo.Contracts.Responses.Auth;
 using Coolzo.Domain.Entities;
 using Coolzo.Shared.Constants;
@@ -9,14 +10,24 @@ using MediatR;
 
 namespace Coolzo.Application.Features.Auth.Commands.Login;
 
+using DomainUser = Coolzo.Domain.Entities.User;
+
 public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthTokenResponse>
 {
+    private static readonly string[] TwoFactorRoles =
+    [
+        RoleNames.SuperAdmin,
+        RoleNames.Admin,
+        "FinanceManager"
+    ];
+
     private readonly IAuditLogRepository _auditLogRepository;
     private readonly AuthenticatedUserProfileFactory _authenticatedUserProfileFactory;
     private readonly CustomerAccountLookupService _customerAccountLookupService;
     private readonly ICurrentDateTime _currentDateTime;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly ICustomerPasswordPolicyService _customerPasswordPolicyService;
+    private readonly IOtpVerificationRepository _otpVerificationRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly ITokenService _tokenService;
@@ -30,6 +41,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthToke
         ICustomerPasswordPolicyService customerPasswordPolicyService,
         CustomerAccountLookupService customerAccountLookupService,
         AuthenticatedUserProfileFactory authenticatedUserProfileFactory,
+        IOtpVerificationRepository otpVerificationRepository,
         ITokenService tokenService,
         IRefreshTokenRepository refreshTokenRepository,
         IUserSessionRepository userSessionRepository,
@@ -43,6 +55,7 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthToke
         _customerPasswordPolicyService = customerPasswordPolicyService;
         _customerAccountLookupService = customerAccountLookupService;
         _authenticatedUserProfileFactory = authenticatedUserProfileFactory;
+        _otpVerificationRepository = otpVerificationRepository;
         _tokenService = tokenService;
         _refreshTokenRepository = refreshTokenRepository;
         _userSessionRepository = userSessionRepository;
@@ -120,11 +133,23 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthToke
                 403);
         }
 
+        var authenticatedUserProfile = await _authenticatedUserProfileFactory.CreateAsync(user, cancellationToken);
+        if (RequiresTwoFactor(authenticatedUserProfile.Roles))
+        {
+            var challengeExpiresAtUtc = await CreateTwoFactorChallengeAsync(user, cancellationToken);
+
+            return new AuthTokenResponse(
+                string.Empty,
+                string.Empty,
+                challengeExpiresAtUtc,
+                authenticatedUserProfile.CurrentUser,
+                true);
+        }
+
         user.LastLoginDateUtc = _currentDateTime.UtcNow;
         user.LastUpdated = _currentDateTime.UtcNow;
         user.UpdatedBy = user.UserName;
 
-        var authenticatedUserProfile = await _authenticatedUserProfileFactory.CreateAsync(user, cancellationToken);
         var accessToken = _tokenService.CreateAccessToken(
             user,
             authenticatedUserProfile.Roles,
@@ -173,6 +198,37 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthToke
             authenticatedUserProfile.CurrentUser);
     }
 
+    private async Task<DateTime> CreateTwoFactorChallengeAsync(DomainUser user, CancellationToken cancellationToken)
+    {
+        var now = _currentDateTime.UtcNow;
+        var expiresAtUtc = now.AddMinutes(10);
+
+        await _otpVerificationRepository.AddAsync(
+            new OtpVerification
+            {
+                UserId = user.UserId,
+                OtpCode = AuthSessionTokenFactory.CreateOtp(),
+                Purpose = AuthSessionPurpose.LoginOtp,
+                ExpiresAtUtc = expiresAtUtc,
+                CreatedBy = user.UserName,
+                DateCreated = now,
+                IPAddress = _currentUserContext.IPAddress
+            },
+            cancellationToken);
+        await _auditLogRepository.AddAsync(
+            CreateAuditLog(user.UserId, "AuthLoginOtpChallenge", "User", user.UserId.ToString(), "Pending2FA"),
+            cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return expiresAtUtc;
+    }
+
+    private static bool RequiresTwoFactor(IReadOnlyCollection<string> roles)
+    {
+        return roles.Any(
+            role => TwoFactorRoles.Any(requiredRole => role.Equals(requiredRole, StringComparison.OrdinalIgnoreCase)));
+    }
+
     private AuditLog CreateAuditLog(long userId, string actionName, string entityName, string entityId, string statusName)
     {
         return new AuditLog
@@ -187,5 +243,119 @@ public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthToke
             DateCreated = _currentDateTime.UtcNow,
             IPAddress = _currentUserContext.IPAddress
         };
+    }
+}
+
+public sealed class LoginFieldCommandHandler : IRequestHandler<LoginFieldCommand, AuthTokenResponse>
+{
+    private readonly AuthSessionTokenIssuer _authSessionTokenIssuer;
+    private readonly ICurrentDateTime _currentDateTime;
+    private readonly IGapPhaseERepository _gapPhaseERepository;
+    private readonly IPasswordHasher _passwordHasher;
+    private readonly ITechnicianRepository _technicianRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IUserRepository _userRepository;
+
+    public LoginFieldCommandHandler(
+        IUserRepository userRepository,
+        ITechnicianRepository technicianRepository,
+        IGapPhaseERepository gapPhaseERepository,
+        IPasswordHasher passwordHasher,
+        AuthSessionTokenIssuer authSessionTokenIssuer,
+        IUnitOfWork unitOfWork,
+        ICurrentDateTime currentDateTime)
+    {
+        _userRepository = userRepository;
+        _technicianRepository = technicianRepository;
+        _gapPhaseERepository = gapPhaseERepository;
+        _passwordHasher = passwordHasher;
+        _authSessionTokenIssuer = authSessionTokenIssuer;
+        _unitOfWork = unitOfWork;
+        _currentDateTime = currentDateTime;
+    }
+
+    public async Task<AuthTokenResponse> Handle(LoginFieldCommand request, CancellationToken cancellationToken)
+    {
+        var employeeId = request.EmployeeId.Trim();
+        var user = await ResolveFieldUserAsync(employeeId, cancellationToken);
+
+        if (user is null || !_passwordHasher.VerifyPassword(user.PasswordHash, request.Pin))
+        {
+            throw new AppException(
+                ErrorCodes.InvalidCredentials,
+                "Invalid employee ID or access PIN.",
+                401);
+        }
+
+        if (!user.IsActive)
+        {
+            throw new AppException(
+                ErrorCodes.InactiveUser,
+                "The user account is inactive.",
+                403);
+        }
+
+        user.LastLoginDateUtc = _currentDateTime.UtcNow;
+        user.LastUpdated = _currentDateTime.UtcNow;
+        user.UpdatedBy = user.UserName;
+
+        var response = await _authSessionTokenIssuer.IssueAsync(user, "AuthFieldLogin", cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return response;
+    }
+
+    private async Task<DomainUser?> ResolveFieldUserAsync(string employeeId, CancellationToken cancellationToken)
+    {
+        var directUser = await _userRepository.GetByUserNameOrEmailAsync(employeeId, cancellationToken);
+        if (IsFieldUser(directUser))
+        {
+            return directUser;
+        }
+
+        var technicians = await _technicianRepository.SearchAsync(employeeId, activeOnly: true, cancellationToken);
+        var technician = technicians.FirstOrDefault(entity =>
+            entity.UserId.HasValue &&
+            entity.TechnicianCode.Equals(employeeId, StringComparison.OrdinalIgnoreCase));
+
+        if (technician?.UserId is long technicianUserId)
+        {
+            var technicianUser = await _userRepository.GetByIdWithRolesAsync(technicianUserId, cancellationToken);
+            if (IsFieldUser(technicianUser))
+            {
+                return technicianUser;
+            }
+        }
+
+        var helpers = await _gapPhaseERepository.SearchHelpersAsync(employeeId, branchId: null, cancellationToken);
+        var helper = helpers.FirstOrDefault(entity =>
+            entity.ActiveFlag &&
+            entity.HelperCode.Equals(employeeId, StringComparison.OrdinalIgnoreCase));
+
+        if (helper is null)
+        {
+            return null;
+        }
+
+        var helperUser = await _userRepository.GetByIdWithRolesAsync(helper.UserId, cancellationToken);
+        return IsFieldUser(helperUser)
+            ? helperUser
+            : null;
+    }
+
+    private static bool IsFieldUser(DomainUser? user)
+    {
+        if (user is null)
+        {
+            return false;
+        }
+
+        return user.UserRoles.Any(userRole =>
+            !userRole.IsDeleted &&
+            userRole.Role is not null &&
+            userRole.Role.IsActive &&
+            !userRole.Role.IsDeleted &&
+            (string.Equals(userRole.Role.RoleName, RoleNames.Technician, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(userRole.Role.RoleName, RoleNames.Helper, StringComparison.OrdinalIgnoreCase)));
     }
 }

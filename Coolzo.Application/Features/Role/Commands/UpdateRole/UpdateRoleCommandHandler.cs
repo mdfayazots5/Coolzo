@@ -61,9 +61,25 @@ public sealed class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand
         role.LastUpdated = _currentDateTime.UtcNow;
         role.UpdatedBy = _currentUserContext.UserName;
 
-        role.RolePermissions.Clear();
+        var requestedPermissionIds = request.PermissionIds.Distinct().ToHashSet();
+        var retainedPermissionIds = new HashSet<long>();
 
-        foreach (var permission in permissions)
+        foreach (var rolePermission in role.RolePermissions.ToList())
+        {
+            if (!requestedPermissionIds.Contains(rolePermission.PermissionId))
+            {
+                role.RolePermissions.Remove(rolePermission);
+                continue;
+            }
+
+            rolePermission.IsDeleted = false;
+            rolePermission.LastUpdated = _currentDateTime.UtcNow;
+            rolePermission.UpdatedBy = _currentUserContext.UserName;
+            rolePermission.IPAddress = _currentUserContext.IPAddress;
+            retainedPermissionIds.Add(rolePermission.PermissionId);
+        }
+
+        foreach (var permission in permissions.Where(permission => !retainedPermissionIds.Contains(permission.PermissionId)))
         {
             role.RolePermissions.Add(new RolePermission
             {
@@ -98,7 +114,11 @@ public sealed class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand
             role.DisplayName,
             role.Description,
             role.IsActive,
+            role.UserRoles.Count(userRole =>
+                !userRole.IsDeleted &&
+                userRole.User is not null &&
+                !userRole.User.IsDeleted),
             permissions.Select(permission => permission.PermissionId).ToArray(),
-            permissions.Select(permission => permission.DisplayName).ToArray());
+            permissions.Select(permission => permission.PermissionName).ToArray());
     }
 }

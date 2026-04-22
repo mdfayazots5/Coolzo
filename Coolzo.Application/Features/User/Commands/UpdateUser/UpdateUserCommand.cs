@@ -8,4 +8,5 @@ public sealed record UpdateUserCommand(
     string Email,
     string FullName,
     bool IsActive,
-    IReadOnlyCollection<long> RoleIds) : IRequest<UserResponse>;
+    IReadOnlyCollection<long> RoleIds,
+    int? BranchId) : IRequest<UserResponse>;

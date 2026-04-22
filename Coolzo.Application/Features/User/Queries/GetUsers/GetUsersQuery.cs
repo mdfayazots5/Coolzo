@@ -4,4 +4,12 @@ using MediatR;
 
 namespace Coolzo.Application.Features.User.Queries.GetUsers;
 
-public sealed record GetUsersQuery(int PageNumber, int PageSize) : IRequest<PagedResult<UserResponse>>;
+public sealed record GetUsersQuery(
+    int PageNumber,
+    int PageSize,
+    string? SearchTerm,
+    bool? IsActive,
+    IReadOnlyCollection<long>? RoleIds,
+    IReadOnlyCollection<int>? BranchIds,
+    string? SortBy,
+    string? SortOrder) : IRequest<PagedResult<UserResponse>>;

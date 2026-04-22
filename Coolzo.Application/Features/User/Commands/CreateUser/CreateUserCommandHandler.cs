@@ -71,6 +71,7 @@ public sealed class CreateUserCommandHandler : IRequestHandler<CreateUserCommand
             FullName = request.FullName.Trim(),
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             IsActive = request.IsActive,
+            BranchId = request.BranchId ?? 1,
             CreatedBy = _currentUserContext.UserName,
             DateCreated = _currentDateTime.UtcNow,
             IPAddress = _currentUserContext.IPAddress
@@ -81,6 +82,7 @@ public sealed class CreateUserCommandHandler : IRequestHandler<CreateUserCommand
             user.UserRoles.Add(new UserRole
             {
                 RoleId = role.RoleId,
+                Role = role,
                 CreatedBy = _currentUserContext.UserName,
                 DateCreated = _currentDateTime.UtcNow,
                 IPAddress = _currentUserContext.IPAddress
@@ -106,14 +108,6 @@ public sealed class CreateUserCommandHandler : IRequestHandler<CreateUserCommand
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new UserResponse(
-            user.UserId,
-            user.UserName,
-            user.Email,
-            user.FullName,
-            user.IsActive,
-            roles.Select(role => role.RoleId).ToArray(),
-            roles.Select(role => role.DisplayName).ToArray(),
-            user.DateCreated);
+        return UserResponseMapper.ToResponse(user);
     }
 }

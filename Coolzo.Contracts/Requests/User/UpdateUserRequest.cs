@@ -6,5 +6,6 @@ public sealed record UpdateUserRequest
     string Email,
     string FullName,
     bool IsActive,
-    IReadOnlyCollection<long> RoleIds
+    IReadOnlyCollection<long> RoleIds,
+    int? BranchId
 );

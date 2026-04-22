@@ -5,6 +5,7 @@ using Coolzo.Application.Features.BookingLookup.Queries.GetBrands;
 using Coolzo.Application.Features.BookingLookup.Queries.GetServiceCategories;
 using Coolzo.Application.Features.BookingLookup.Queries.GetServices;
 using Coolzo.Application.Features.BookingLookup.Queries.GetTonnages;
+using Coolzo.Application.Features.BookingLookup.Queries.GetZones;
 using Coolzo.Application.Features.BookingLookup.Queries.GetZoneByPincode;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Responses.Booking;
@@ -82,6 +83,18 @@ public sealed class BookingLookupController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(new GetBrandsQuery(search), cancellationToken);
+
+        return Success(response);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("zones")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<ZoneListItemResponse>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ZoneListItemResponse>>>> GetZonesAsync(
+        [FromQuery] string? search,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetZonesQuery(search), cancellationToken);
 
         return Success(response);
     }

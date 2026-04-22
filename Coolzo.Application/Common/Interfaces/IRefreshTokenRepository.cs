@@ -9,4 +9,6 @@ public interface IRefreshTokenRepository
     Task<int> DeleteExpiredAsync(DateTime utcNow, CancellationToken cancellationToken);
 
     Task<RefreshToken?> GetByTokenAsync(string refreshToken, CancellationToken cancellationToken);
+
+    Task<int> RevokeActiveByUserIdAsync(long userId, DateTime revokedAtUtc, string revokedBy, CancellationToken cancellationToken);
 }

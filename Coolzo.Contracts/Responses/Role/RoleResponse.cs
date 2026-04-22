@@ -7,6 +7,7 @@ public sealed record RoleResponse
     string DisplayName,
     string Description,
     bool IsActive,
+    int UserCount,
     IReadOnlyCollection<long> PermissionIds,
     IReadOnlyCollection<string> Permissions
 );

@@ -53,6 +53,8 @@ public sealed class RoleRepository : IRoleRepository
 
         return await _dbContext.Roles
             .AsNoTracking()
+            .Include(role => role.UserRoles)
+                .ThenInclude(userRole => userRole.User)
             .Include(role => role.RolePermissions)
                 .ThenInclude(rolePermission => rolePermission.Permission)
             .Where(role => !role.IsDeleted)

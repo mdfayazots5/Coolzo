@@ -20,5 +20,9 @@ public sealed class UpdateUserCommandValidator : AbstractValidator<UpdateUserCom
 
         RuleFor(request => request.RoleIds)
             .NotEmpty();
+
+        RuleFor(request => request.BranchId)
+            .GreaterThan(0)
+            .When(request => request.BranchId.HasValue);
     }
 }

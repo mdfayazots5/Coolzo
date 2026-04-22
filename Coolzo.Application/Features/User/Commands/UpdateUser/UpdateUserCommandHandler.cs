@@ -66,6 +66,7 @@ public sealed class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand
         user.Email = request.Email.Trim();
         user.FullName = request.FullName.Trim();
         user.IsActive = request.IsActive;
+        user.BranchId = request.BranchId ?? user.BranchId;
         user.LastUpdated = _currentDateTime.UtcNow;
         user.UpdatedBy = _currentUserContext.UserName;
 
@@ -76,6 +77,7 @@ public sealed class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand
             user.UserRoles.Add(new UserRole
             {
                 RoleId = role.RoleId,
+                Role = role,
                 CreatedBy = _currentUserContext.UserName,
                 DateCreated = _currentDateTime.UtcNow,
                 IPAddress = _currentUserContext.IPAddress
@@ -100,14 +102,6 @@ public sealed class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new UserResponse(
-            user.UserId,
-            user.UserName,
-            user.Email,
-            user.FullName,
-            user.IsActive,
-            roles.Select(role => role.RoleId).ToArray(),
-            roles.Select(role => role.DisplayName).ToArray(),
-            user.DateCreated);
+        return UserResponseMapper.ToResponse(user);
     }
 }

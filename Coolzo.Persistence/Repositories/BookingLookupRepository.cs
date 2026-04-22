@@ -105,6 +105,25 @@ public sealed class BookingLookupRepository : IBookingLookupRepository
             .ToArrayAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<Zone>> ListZonesAsync(string? search, CancellationToken cancellationToken)
+    {
+        var query = _dbContext.Zones
+            .AsNoTracking()
+            .Where(entity => entity.IsActive && !entity.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(
+                entity => entity.ZoneName.Contains(search) ||
+                    entity.ZoneCode.Contains(search) ||
+                    entity.CityName.Contains(search));
+        }
+
+        return await query
+            .OrderBy(entity => entity.ZoneName)
+            .ToArrayAsync(cancellationToken);
+    }
+
     public async Task<Zone?> GetZoneByPincodeAsync(string pincode, CancellationToken cancellationToken)
     {
         return await _dbContext.ZonePincodes

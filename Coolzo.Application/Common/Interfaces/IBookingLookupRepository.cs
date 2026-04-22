@@ -14,6 +14,8 @@ public interface IBookingLookupRepository
 
     Task<IReadOnlyCollection<Brand>> ListBrandsAsync(string? search, CancellationToken cancellationToken);
 
+    Task<IReadOnlyCollection<Zone>> ListZonesAsync(string? search, CancellationToken cancellationToken);
+
     Task<Zone?> GetZoneByPincodeAsync(string pincode, CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<SlotAvailability>> ListAvailableSlotsAsync(long zoneId, DateOnly slotDate, CancellationToken cancellationToken);

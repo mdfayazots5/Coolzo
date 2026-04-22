@@ -9,4 +9,5 @@ public sealed record CreateUserCommand(
     string FullName,
     string Password,
     bool IsActive,
-    IReadOnlyCollection<long> RoleIds) : IRequest<UserResponse>;
+    IReadOnlyCollection<long> RoleIds,
+    int? BranchId) : IRequest<UserResponse>;

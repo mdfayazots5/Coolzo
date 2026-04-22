@@ -154,6 +154,8 @@ public interface IGapPhaseARepository
 
     Task AddSystemAlertAsync(SystemAlert systemAlert, CancellationToken cancellationToken);
 
+    Task<IReadOnlyCollection<SystemAlert>> GetOpenAlertsAsync(string? relatedEntityName, CancellationToken cancellationToken);
+
     Task<IReadOnlyCollection<SystemAlert>> GetOpenAlertsDueAsync(DateTime utcNow, CancellationToken cancellationToken);
 
     Task<int> CountOpenAlertsAsync(CancellationToken cancellationToken);

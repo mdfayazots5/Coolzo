@@ -16,24 +16,25 @@ public sealed class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, PagedR
 
     public async Task<PagedResult<UserResponse>> Handle(GetUsersQuery request, CancellationToken cancellationToken)
     {
-        var users = await _userRepository.ListAsync(request.PageNumber, request.PageSize, cancellationToken);
-        var totalCount = await _userRepository.CountAsync(cancellationToken);
+        var users = await _userRepository.ListAsync(
+            request.PageNumber,
+            request.PageSize,
+            request.SearchTerm,
+            request.IsActive,
+            request.RoleIds,
+            request.BranchIds,
+            request.SortBy,
+            request.SortOrder,
+            cancellationToken);
+        var totalCount = await _userRepository.CountAsync(
+            request.SearchTerm,
+            request.IsActive,
+            request.RoleIds,
+            request.BranchIds,
+            cancellationToken);
 
         return new PagedResult<UserResponse>(
-            users.Select(
-                user => new UserResponse(
-                    user.UserId,
-                    user.UserName,
-                    user.Email,
-                    user.FullName,
-                    user.IsActive,
-                    user.UserRoles.Select(userRole => userRole.RoleId).ToArray(),
-                    user.UserRoles
-                        .Where(userRole => userRole.Role is not null)
-                        .Select(userRole => userRole.Role!.DisplayName)
-                        .ToArray(),
-                    user.DateCreated))
-                .ToArray(),
+            users.Select(UserResponseMapper.ToResponse).ToArray(),
             totalCount,
             request.PageNumber,
             request.PageSize);

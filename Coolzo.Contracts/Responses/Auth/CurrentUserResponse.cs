@@ -8,6 +8,7 @@ public sealed record CurrentUserResponse
     string FullName,
     long? TechnicianId,
     long? HelperProfileId,
+    int BranchId,
     IReadOnlyCollection<string> Roles,
     IReadOnlyCollection<string> Permissions,
     long? CustomerId,

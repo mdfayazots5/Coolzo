@@ -23,4 +23,12 @@ public sealed class ServiceRequest : AuditableEntity
     public ICollection<AssignmentLog> AssignmentLogs { get; set; } = new List<AssignmentLog>();
 
     public JobCard? JobCard { get; set; }
+
+    public ICollection<JobReport> JobReports { get; set; } = new List<JobReport>();
+
+    public ICollection<JobPhoto> JobPhotos { get; set; } = new List<JobPhoto>();
+
+    public ICollection<CustomerSignature> CustomerSignatures { get; set; } = new List<CustomerSignature>();
+
+    public ICollection<PartsRequest> PartsRequests { get; set; } = new List<PartsRequest>();
 }
