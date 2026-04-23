@@ -20,6 +20,8 @@ public sealed record LoginOtpCommand(string LoginId, string Otp) : IRequest<Auth
 
 public sealed record VerifyOtpCommand(string Email, string Otp) : IRequest<AuthTokenResponse>;
 
+public sealed record SendOtpCommand(string LoginId) : IRequest<AuthActionResponse>;
+
 public sealed record ForgotPasswordCommand(string Email) : IRequest<AuthActionResponse>;
 
 public sealed record ResetPasswordCommand(string Token, string Password) : IRequest<AuthActionResponse>;
@@ -138,19 +140,19 @@ public sealed class AuthSessionTokenIssuer
 public sealed class LoginOtpCommandHandler : IRequestHandler<LoginOtpCommand, AuthTokenResponse>
 {
     private readonly AuthSessionTokenIssuer _authSessionTokenIssuer;
+    private readonly CustomerAccountLookupService _customerAccountLookupService;
     private readonly ICurrentDateTime _currentDateTime;
     private readonly IOtpVerificationRepository _otpVerificationRepository;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IUserRepository _userRepository;
 
     public LoginOtpCommandHandler(
-        IUserRepository userRepository,
+        CustomerAccountLookupService customerAccountLookupService,
         IOtpVerificationRepository otpVerificationRepository,
         AuthSessionTokenIssuer authSessionTokenIssuer,
         IUnitOfWork unitOfWork,
         ICurrentDateTime currentDateTime)
     {
-        _userRepository = userRepository;
+        _customerAccountLookupService = customerAccountLookupService;
         _otpVerificationRepository = otpVerificationRepository;
         _authSessionTokenIssuer = authSessionTokenIssuer;
         _unitOfWork = unitOfWork;
@@ -159,8 +161,9 @@ public sealed class LoginOtpCommandHandler : IRequestHandler<LoginOtpCommand, Au
 
     public async Task<AuthTokenResponse> Handle(LoginOtpCommand request, CancellationToken cancellationToken)
     {
-        var user = await _userRepository.GetByUserNameOrEmailAsync(request.LoginId.Trim(), cancellationToken)
+        var customerAccount = await _customerAccountLookupService.FindByLoginIdAsync(request.LoginId.Trim(), cancellationToken)
             ?? throw new AppException(ErrorCodes.InvalidCredentials, "The verification code is invalid or expired.", 401);
+        var user = customerAccount.User;
         var otp = await _otpVerificationRepository.GetActiveByUserAndCodeAsync(
             user.UserId,
             AuthSessionPurpose.LoginOtp,
@@ -181,6 +184,70 @@ public sealed class LoginOtpCommandHandler : IRequestHandler<LoginOtpCommand, Au
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return response;
+    }
+}
+
+public sealed class SendOtpCommandHandler : IRequestHandler<SendOtpCommand, AuthActionResponse>
+{
+    private readonly IAuditLogRepository _auditLogRepository;
+    private readonly CustomerAccountLookupService _customerAccountLookupService;
+    private readonly ICurrentDateTime _currentDateTime;
+    private readonly ICurrentUserContext _currentUserContext;
+    private readonly IOtpVerificationRepository _otpVerificationRepository;
+    private readonly IUnitOfWork _unitOfWork;
+
+    public SendOtpCommandHandler(
+        CustomerAccountLookupService customerAccountLookupService,
+        IOtpVerificationRepository otpVerificationRepository,
+        IAuditLogRepository auditLogRepository,
+        IUnitOfWork unitOfWork,
+        ICurrentDateTime currentDateTime,
+        ICurrentUserContext currentUserContext)
+    {
+        _customerAccountLookupService = customerAccountLookupService;
+        _otpVerificationRepository = otpVerificationRepository;
+        _auditLogRepository = auditLogRepository;
+        _unitOfWork = unitOfWork;
+        _currentDateTime = currentDateTime;
+        _currentUserContext = currentUserContext;
+    }
+
+    public async Task<AuthActionResponse> Handle(SendOtpCommand request, CancellationToken cancellationToken)
+    {
+        var customerAccount = await _customerAccountLookupService.FindByLoginIdAsync(request.LoginId.Trim(), cancellationToken)
+            ?? throw new AppException(ErrorCodes.NotFound, "The customer account could not be found.", 404);
+        var now = _currentDateTime.UtcNow;
+
+        await _otpVerificationRepository.AddAsync(
+            new OtpVerificationEntity
+            {
+                UserId = customerAccount.User.UserId,
+                OtpCode = AuthSessionTokenFactory.CreateOtp(),
+                Purpose = AuthSessionPurpose.LoginOtp,
+                ExpiresAtUtc = now.AddMinutes(10),
+                CreatedBy = "AuthOtpSend",
+                DateCreated = now,
+                IPAddress = _currentUserContext.IPAddress
+            },
+            cancellationToken);
+        await _auditLogRepository.AddAsync(
+            new AuditLogEntity
+            {
+                UserId = customerAccount.User.UserId,
+                ActionName = "AuthOtpSend",
+                EntityName = "User",
+                EntityId = customerAccount.User.UserId.ToString(),
+                TraceId = _currentUserContext.TraceId,
+                StatusName = "Success",
+                CreatedBy = "AuthOtpSend",
+                DateCreated = now,
+                IPAddress = _currentUserContext.IPAddress
+            },
+            cancellationToken);
+
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new AuthActionResponse(true, "OTP generated successfully.");
     }
 }
 

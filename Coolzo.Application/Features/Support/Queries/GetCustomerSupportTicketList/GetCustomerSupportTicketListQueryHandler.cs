@@ -21,6 +21,18 @@ public sealed class GetCustomerSupportTicketListQueryHandler : IRequestHandler<G
     public async Task<PagedResult<SupportTicketListItemResponse>> Handle(GetCustomerSupportTicketListQuery request, CancellationToken cancellationToken)
     {
         var customer = await _supportTicketAccessService.GetCurrentCustomerAsync(cancellationToken);
+
+        if (request.CountOnly)
+        {
+            var unreadCount = await _supportTicketRepository.CountByCustomerIdAsync(customer.CustomerId, request.UnreadOnly, cancellationToken);
+
+            return new PagedResult<SupportTicketListItemResponse>(
+                Array.Empty<SupportTicketListItemResponse>(),
+                unreadCount,
+                request.PageNumber,
+                request.PageSize);
+        }
+
         var tickets = await _supportTicketRepository.ListByCustomerIdAsync(
             customer.CustomerId,
             request.PageNumber,

@@ -29,6 +29,16 @@ public sealed class SupportTicketLookupController : ApiControllerBase
         return Success(response.Categories);
     }
 
+    [HttpGet("~/api/v{version:apiVersion}/support/categories")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<LookupItemResponse>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<LookupItemResponse>>>> GetSupportCategoriesAsync(
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetSupportTicketLookupDataQuery(), cancellationToken);
+
+        return Success(response.Categories);
+    }
+
     [HttpGet("priorities")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<LookupItemResponse>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<IReadOnlyCollection<LookupItemResponse>>>> GetPrioritiesAsync(

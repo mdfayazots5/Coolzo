@@ -1,3 +1,10 @@
 namespace Coolzo.Contracts.Requests.Auth;
 
-public sealed record ForgotPasswordRequest(string Email);
+public sealed class ForgotPasswordRequest
+{
+    public string? Email { get; init; }
+
+    public string? Phone { get; init; }
+
+    public string? LoginId { get; init; }
+}

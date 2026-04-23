@@ -35,6 +35,7 @@ public sealed class BookingLookupRepository : IBookingLookupRepository
     {
         var query = _dbContext.Services
             .AsNoTracking()
+            .Include(entity => entity.ServiceCategory)
             .Include(entity => entity.PricingModel)
             .Where(entity => entity.IsActive && !entity.IsDeleted);
 
@@ -153,6 +154,8 @@ public sealed class BookingLookupRepository : IBookingLookupRepository
     public Task<Service?> GetServiceByIdAsync(long serviceId, CancellationToken cancellationToken)
     {
         return _dbContext.Services
+            .Include(entity => entity.ServiceCategory)
+            .Include(entity => entity.PricingModel)
             .FirstOrDefaultAsync(entity => entity.ServiceId == serviceId && entity.IsActive && !entity.IsDeleted, cancellationToken);
     }
 

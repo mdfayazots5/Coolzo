@@ -1,12 +1,17 @@
 using Asp.Versioning;
 using Coolzo.Api.Mapping;
+using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Application.Features.Auth.Commands.AuthSession;
+using Coolzo.Application.Features.CustomerAuth.Commands.ChangeCustomerPassword;
+using Coolzo.Application.Features.CustomerAuth.Commands.ResetCustomerPasswordWithOtp;
 using Coolzo.Application.Features.Auth.Commands.Login;
 using Coolzo.Application.Features.Auth.Commands.RefreshToken;
 using Coolzo.Application.Features.Auth.Queries.GetCurrentUser;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.Auth;
+using Coolzo.Contracts.Requests.CustomerAuth;
 using Coolzo.Contracts.Responses.Auth;
+using Coolzo.Contracts.Responses.Customer;
 using Coolzo.Shared.Constants;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -23,6 +28,30 @@ public sealed class AuthController : ApiControllerBase
     public AuthController(ISender sender)
     {
         _sender = sender;
+    }
+
+    [AllowAnonymous]
+    [HttpPost("otp/send")]
+    [ProducesResponseType(typeof(ApiResponse<AuthActionResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<AuthActionResponse>>> SendOtpAsync(
+        [FromBody] SendCustomerOtpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new SendOtpCommand(request.Phone), cancellationToken);
+
+        return Success(response, response.Message);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("otp/verify")]
+    [ProducesResponseType(typeof(ApiResponse<AuthTokenResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<AuthTokenResponse>>> VerifyCustomerOtpAsync(
+        [FromBody] VerifyCustomerOtpRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new VerifyOtpCommand(request.Phone, request.Otp), cancellationToken);
+
+        return Success(response, "OTP verified successfully.");
     }
 
     [AllowAnonymous]
@@ -100,7 +129,15 @@ public sealed class AuthController : ApiControllerBase
         [FromBody] ForgotPasswordRequest request,
         CancellationToken cancellationToken)
     {
-        var response = await _sender.Send(new ForgotPasswordCommand(request.Email), cancellationToken);
+        var loginId = request.LoginId ?? request.Phone;
+
+        if (!string.IsNullOrWhiteSpace(loginId))
+        {
+            var otpResponse = await _sender.Send(new SendOtpCommand(loginId), cancellationToken);
+            return Success(otpResponse, otpResponse.Message);
+        }
+
+        var response = await _sender.Send(new ForgotPasswordCommand(request.Email ?? string.Empty), cancellationToken);
 
         return Success(response, response.Message);
     }
@@ -112,9 +149,38 @@ public sealed class AuthController : ApiControllerBase
         [FromBody] ResetPasswordRequest request,
         CancellationToken cancellationToken)
     {
-        var response = await _sender.Send(new ResetPasswordCommand(request.Token, request.Password), cancellationToken);
+        if (!string.IsNullOrWhiteSpace(request.Phone) &&
+            !string.IsNullOrWhiteSpace(request.Otp) &&
+            !string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            var customerResponse = await _sender.Send(
+                new ResetCustomerPasswordWithOtpCommand(request.Phone, request.Otp, request.NewPassword),
+                cancellationToken);
+
+            return Success(
+                new AuthActionResponse(customerResponse.PasswordUpdated, "Customer password reset successfully."),
+                "Customer password reset successfully.");
+        }
+
+        var response = await _sender.Send(new ResetPasswordCommand(request.Token ?? string.Empty, request.Password ?? string.Empty), cancellationToken);
 
         return Success(response, response.Message);
+    }
+
+    [Authorize(Roles = RoleNames.Customer)]
+    [HttpPost("change-password")]
+    [ProducesResponseType(typeof(ApiResponse<AuthActionResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<AuthActionResponse>>> ChangePasswordAsync(
+        [FromBody] ChangeCustomerPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new ChangeCustomerPasswordCommand(request.CurrentPassword, request.NewPassword),
+            cancellationToken);
+
+        return Success(
+            new AuthActionResponse(response.PasswordUpdated, "Customer password changed successfully."),
+            "Customer password changed successfully.");
     }
 
     [Authorize]
@@ -127,6 +193,17 @@ public sealed class AuthController : ApiControllerBase
         var response = await _sender.Send(new LogoutCommand(request.RefreshToken), cancellationToken);
 
         return Success(response, response.Message);
+    }
+
+    [Authorize(Roles = RoleNames.Customer)]
+    [HttpDelete("account")]
+    [ProducesResponseType(typeof(ApiResponse<CustomerAccountDeletionResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<CustomerAccountDeletionResponse>>> DeleteCustomerAccountAsync(
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new DeactivateMyCustomerAccountCommand("Customer app self-service deletion"), cancellationToken);
+
+        return Success(response, "Customer account deactivated successfully.");
     }
 
     [Authorize]

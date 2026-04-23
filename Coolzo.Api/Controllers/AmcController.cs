@@ -3,6 +3,7 @@ using Coolzo.Application.Features.Amc.Commands.AssignAmcToCustomer;
 using Coolzo.Application.Features.Amc.Commands.CreateAmcPlan;
 using Coolzo.Application.Features.Amc.Commands.GenerateAmcVisits;
 using Coolzo.Application.Features.Amc.Commands.UpdateAmcPlan;
+using Coolzo.Application.Features.Amc.Queries.GetAmcPlanById;
 using Coolzo.Application.Features.Amc.Queries.GetAmcPlans;
 using Coolzo.Application.Features.Amc.Queries.GetCustomerAmc;
 using Coolzo.Contracts.Common;
@@ -84,6 +85,18 @@ public sealed class AmcController : ApiControllerBase
         CancellationToken cancellationToken = default)
     {
         var response = await _sender.Send(new GetAmcPlansQuery(isActive, pageNumber, pageSize), cancellationToken);
+
+        return Success(response);
+    }
+
+    [Authorize]
+    [HttpGet("plans/{amcPlanId:long}")]
+    [ProducesResponseType(typeof(ApiResponse<AmcPlanResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<AmcPlanResponse>>> GetPlanByIdAsync(
+        [FromRoute] long amcPlanId,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetAmcPlanByIdQuery(amcPlanId), cancellationToken);
 
         return Success(response);
     }

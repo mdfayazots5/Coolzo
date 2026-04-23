@@ -3,6 +3,7 @@ using Coolzo.Application.Features.Billing.Commands.GenerateInvoiceFromQuotation;
 using Coolzo.Application.Features.Billing.Queries.GetCustomerInvoices;
 using Coolzo.Application.Features.Billing.Queries.GetInvoiceById;
 using Coolzo.Application.Features.Billing.Queries.SearchInvoices;
+using Coolzo.Api.Utilities;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Responses.Billing;
 using Coolzo.Shared.Constants;
@@ -61,6 +62,39 @@ public sealed class InvoiceController : ApiControllerBase
         var response = await _sender.Send(new GetInvoiceByIdQuery(id), cancellationToken);
 
         return Success(response);
+    }
+
+    [Authorize]
+    [HttpGet("{id:long}/pdf")]
+    public async Task<IActionResult> DownloadPdfAsync(
+        [FromRoute] long id,
+        CancellationToken cancellationToken)
+    {
+        var invoice = await _sender.Send(new GetInvoiceByIdQuery(id), cancellationToken);
+        var lines = new List<string>
+        {
+            $"Invoice {invoice.InvoiceNumber}",
+            $"Customer: {invoice.CustomerName}",
+            $"Service: {invoice.ServiceName}",
+            $"Date: {invoice.InvoiceDateUtc:dd MMM yyyy}",
+            $"Status: {invoice.CurrentStatus}",
+            $"Subtotal: INR {invoice.SubTotalAmount:0.00}",
+            $"Discount: INR {invoice.DiscountAmount:0.00}",
+            $"Tax: INR {invoice.TaxAmount:0.00}",
+            $"Total: INR {invoice.GrandTotalAmount:0.00}",
+            $"Paid: INR {invoice.PaidAmount:0.00}",
+            $"Outstanding: INR {invoice.BalanceAmount:0.00}"
+        };
+
+        foreach (var line in invoice.Lines)
+        {
+            lines.Add($"- {line.LineDescription}: INR {line.LineAmount:0.00}");
+        }
+
+        var fileBytes = SimplePdfDocumentBuilder.Build(lines);
+        var fileName = $"invoice-{invoice.InvoiceNumber}.pdf";
+
+        return File(fileBytes, "application/pdf", fileName);
     }
 
     [Authorize]

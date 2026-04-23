@@ -1,4 +1,5 @@
 using Asp.Versioning;
+using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Application.Features.Booking.Commands.CreateCustomerBooking;
 using Coolzo.Application.Features.Booking.Commands.CreateGuestBooking;
 using Coolzo.Application.Features.Booking.Queries.GetBookingDetail;
@@ -6,6 +7,7 @@ using Coolzo.Application.Features.Booking.Queries.GetCustomerBookings;
 using Coolzo.Application.Features.Booking.Queries.SearchBookings;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.Booking;
+using Coolzo.Contracts.Requests.Customer;
 using Coolzo.Contracts.Responses.Booking;
 using Coolzo.Shared.Constants;
 using MediatR;
@@ -135,5 +137,20 @@ public sealed class BookingController : ApiControllerBase
             cancellationToken);
 
         return Success(response);
+    }
+
+    [Authorize]
+    [HttpPost("{bookingId:long}/reschedule")]
+    [ProducesResponseType(typeof(ApiResponse<BookingDetailResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<BookingDetailResponse>>> RescheduleAsync(
+        [FromRoute] long bookingId,
+        [FromBody] RescheduleCustomerBookingRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new RescheduleMyCustomerBookingCommand(bookingId, request.SlotAvailabilityId, request.Remarks),
+            cancellationToken);
+
+        return Success(response, "Customer booking rescheduled successfully.");
     }
 }

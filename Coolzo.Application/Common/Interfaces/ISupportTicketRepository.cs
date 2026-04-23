@@ -46,6 +46,8 @@ public interface ISupportTicketRepository
 
     Task<int> CountByCustomerIdAsync(long customerId, CancellationToken cancellationToken);
 
+    Task<int> CountByCustomerIdAsync(long customerId, bool unreadOnly, CancellationToken cancellationToken);
+
     Task<IReadOnlyCollection<SupportTicketCategory>> GetCategoriesAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<SupportTicketPriority>> GetPrioritiesAsync(CancellationToken cancellationToken);

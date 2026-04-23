@@ -29,9 +29,37 @@ public sealed class CustomerContentController : ApiControllerBase
         return Success(response);
     }
 
+    [AllowAnonymous]
+    [HttpGet("cms/blog-posts")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<BlogContentResponse>>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<BlogContentResponse>>>> GetPublishedBlogPostsAsync(
+        [FromQuery] string? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        _ = status;
+        _ = page;
+        _ = pageSize;
+
+        var response = await _sender.Send(new GetPublicBlogsQuery(), cancellationToken);
+        return Success(response);
+    }
+
     [HttpGet("cms/public/blogs/{id}")]
     [ProducesResponseType(typeof(ApiResponse<BlogContentResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<BlogContentResponse?>>> GetBlogByIdAsync(
+        [FromRoute] string id,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetPublicBlogByIdQuery(id), cancellationToken);
+        return Success(response);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("cms/blog-posts/{id}")]
+    [ProducesResponseType(typeof(ApiResponse<BlogContentResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<BlogContentResponse?>>> GetBlogPostByIdAsync(
         [FromRoute] string id,
         CancellationToken cancellationToken)
     {
@@ -51,6 +79,25 @@ public sealed class CustomerContentController : ApiControllerBase
     [HttpPost("customer-app/feedback")]
     [ProducesResponseType(typeof(ApiResponse<CustomerAppFeedbackResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<CustomerAppFeedbackResponse>>> SubmitFeedbackAsync(
+        [FromBody] SubmitAppFeedbackRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new SubmitMyAppFeedbackCommand(
+                request.FeedbackType,
+                request.Message,
+                request.Rating,
+                request.AppVersion,
+                request.DeviceInfo),
+            cancellationToken);
+
+        return Success(response, "Customer app feedback submitted successfully.");
+    }
+
+    [Authorize]
+    [HttpPost("feedback/app")]
+    [ProducesResponseType(typeof(ApiResponse<CustomerAppFeedbackResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<CustomerAppFeedbackResponse>>> SubmitAppFeedbackAliasAsync(
         [FromBody] SubmitAppFeedbackRequest request,
         CancellationToken cancellationToken)
     {

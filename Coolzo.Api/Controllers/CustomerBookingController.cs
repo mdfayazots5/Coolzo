@@ -2,6 +2,7 @@ using Asp.Versioning;
 using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Application.Features.Booking.Queries.GetCustomerBookingDetail;
 using Coolzo.Application.Features.Booking.Queries.GetCustomerBookings;
+using Coolzo.Api.Utilities;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.Customer;
 using Coolzo.Contracts.Responses.Booking;
@@ -68,5 +69,39 @@ public sealed class CustomerBookingController : ApiControllerBase
     {
         var response = await _sender.Send(new GetCustomerBookingDetailQuery(bookingId), cancellationToken);
         return Success(response);
+    }
+
+    [HttpGet("{bookingId:long}/service-report/pdf")]
+    public async Task<IActionResult> DownloadServiceReportPdfAsync(
+        [FromRoute] long bookingId,
+        CancellationToken cancellationToken)
+    {
+        var booking = await _sender.Send(new GetCustomerBookingDetailQuery(bookingId), cancellationToken);
+        var lines = new List<string>
+        {
+            $"Service Report {booking.ServiceRequestNumber ?? booking.BookingReference}",
+            $"Service: {booking.ServiceName}",
+            $"Address: {booking.AddressSummary}",
+            $"Slot: {booking.SlotDate:dd MMM yyyy} {booking.SlotLabel}",
+            $"Status: {booking.OperationalStatus ?? booking.Status}",
+            $"Summary: {booking.CompletionSummary ?? "Service report available in booking timeline."}"
+        };
+
+        foreach (var item in booking.FieldTimeline)
+        {
+            var text = !string.IsNullOrWhiteSpace(item.EventTitle)
+                ? item.EventTitle
+                : item.Remarks;
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                lines.Add($"- {text}");
+            }
+        }
+
+        var fileBytes = SimplePdfDocumentBuilder.Build(lines);
+        var fileName = $"service-report-{booking.BookingReference}.pdf";
+
+        return File(fileBytes, "application/pdf", fileName);
     }
 }

@@ -1,4 +1,5 @@
 using Asp.Versioning;
+using Coolzo.Api.Extensions;
 using Coolzo.Application.Features.Support.Commands.AssignSupportTicket;
 using Coolzo.Application.Features.Support.Commands.ChangeSupportTicketPriority;
 using Coolzo.Application.Features.Support.Commands.ChangeSupportTicketStatus;
@@ -95,14 +96,22 @@ public sealed class SupportTicketController : ApiControllerBase
 
     [HttpGet("my-tickets")]
     [ProducesResponseType(typeof(ApiResponse<PagedResult<SupportTicketListItemResponse>>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<ApiResponse<PagedResult<SupportTicketListItemResponse>>>> GetMyTicketsAsync(
+    [ProducesResponseType(typeof(ApiResponse<SupportTicketCountResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetMyTicketsAsync(
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] bool countOnly = false,
+        [FromQuery] bool unread = false,
         CancellationToken cancellationToken = default)
     {
-        var response = await _sender.Send(new GetCustomerSupportTicketListQuery(pageNumber, pageSize), cancellationToken);
+        var response = await _sender.Send(new GetCustomerSupportTicketListQuery(pageNumber, pageSize, countOnly, unread), cancellationToken);
 
-        return Success(response);
+        if (countOnly)
+        {
+            return Ok(ApiResponseFactory.Success(new SupportTicketCountResponse(response.TotalCount), HttpContext.TraceIdentifier));
+        }
+
+        return Ok(ApiResponseFactory.Success(response, HttpContext.TraceIdentifier));
     }
 
     [HttpPost("{supportTicketId:long}/assign")]

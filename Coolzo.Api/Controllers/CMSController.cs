@@ -71,6 +71,17 @@ public sealed class CMSController : ApiControllerBase
         return Success(response);
     }
 
+    [AllowAnonymous]
+    [HttpGet("blocks/{key}")]
+    public async Task<ActionResult<ApiResponse<CMSBlockResponse>>> GetPublicBlockByKeyAsync(
+        [FromRoute] string key,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetPublicServiceContentQuery(key), cancellationToken);
+
+        return Success(response);
+    }
+
     [Authorize(Policy = PermissionNames.CmsRead)]
     [HttpGet("admin/blocks")]
     public async Task<ActionResult<ApiResponse<IReadOnlyCollection<CMSBlockResponse>>>> GetBlocksAsync(

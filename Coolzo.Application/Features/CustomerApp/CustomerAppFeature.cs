@@ -1032,6 +1032,13 @@ public sealed class GetCustomerReviewsQueryHandler : IRequestHandler<GetCustomer
 
 public sealed class CreateMyCustomerReviewCommandHandler : IRequestHandler<CreateMyCustomerReviewCommand, CustomerReviewResponse>
 {
+    private static readonly Domain.Enums.ServiceRequestStatus[] ReviewEligibleStatuses =
+    [
+        Domain.Enums.ServiceRequestStatus.WorkCompletedPendingSubmission,
+        Domain.Enums.ServiceRequestStatus.SubmittedForClosure
+    ];
+
+    private readonly IBookingRepository _bookingRepository;
     private readonly CustomerAccountLookupService _customerAccountLookupService;
     private readonly ICustomerAppRepository _customerAppRepository;
     private readonly ICurrentDateTime _currentDateTime;
@@ -1039,12 +1046,14 @@ public sealed class CreateMyCustomerReviewCommandHandler : IRequestHandler<Creat
     private readonly IUnitOfWork _unitOfWork;
 
     public CreateMyCustomerReviewCommandHandler(
+        IBookingRepository bookingRepository,
         CustomerAccountLookupService customerAccountLookupService,
         ICustomerAppRepository customerAppRepository,
         IUnitOfWork unitOfWork,
         ICurrentDateTime currentDateTime,
         ICurrentUserContext currentUserContext)
     {
+        _bookingRepository = bookingRepository;
         _customerAccountLookupService = customerAccountLookupService;
         _customerAppRepository = customerAppRepository;
         _unitOfWork = unitOfWork;
@@ -1060,6 +1069,24 @@ public sealed class CreateMyCustomerReviewCommandHandler : IRequestHandler<Creat
         }
 
         var account = await CustomerAppAccess.ResolveCurrentCustomerAsync(_currentUserContext, _customerAccountLookupService, cancellationToken);
+
+        if (request.BookingId.HasValue)
+        {
+            var booking = await _bookingRepository.GetByIdForCustomerAsync(request.BookingId.Value, account.Customer.CustomerId, cancellationToken);
+
+            if (booking is null)
+            {
+                throw new AppException(ErrorCodes.NotFound, "The requested booking could not be found for this customer.", 404);
+            }
+
+            var serviceRequestStatus = booking.ServiceRequest?.CurrentStatus;
+
+            if (serviceRequestStatus is null || !ReviewEligibleStatuses.Contains(serviceRequestStatus.Value))
+            {
+                throw new AppException(ErrorCodes.ValidationFailure, "Reviews can only be submitted after the service is completed.", 400);
+            }
+        }
+
         var review = new CustomerReview
         {
             CustomerId = account.Customer.CustomerId,

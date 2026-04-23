@@ -6,4 +6,6 @@ namespace Coolzo.Application.Features.Support.Queries.GetCustomerSupportTicketLi
 
 public sealed record GetCustomerSupportTicketListQuery(
     int PageNumber,
-    int PageSize) : IRequest<PagedResult<SupportTicketListItemResponse>>;
+    int PageSize,
+    bool CountOnly = false,
+    bool UnreadOnly = false) : IRequest<PagedResult<SupportTicketListItemResponse>>;

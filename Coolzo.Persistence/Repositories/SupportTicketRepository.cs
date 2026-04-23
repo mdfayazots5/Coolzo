@@ -102,6 +102,23 @@ public sealed class SupportTicketRepository : ISupportTicketRepository
             cancellationToken);
     }
 
+    public Task<int> CountByCustomerIdAsync(long customerId, bool unreadOnly, CancellationToken cancellationToken)
+    {
+        var query = _dbContext.SupportTickets
+            .AsNoTracking()
+            .Where(entity => entity.CustomerId == customerId && !entity.IsDeleted);
+
+        if (unreadOnly)
+        {
+            query = query.Where(entity =>
+                entity.CurrentStatus != SupportTicketStatus.Closed &&
+                entity.LastUpdated.HasValue &&
+                entity.LastUpdated.Value != entity.DateCreated);
+        }
+
+        return query.CountAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyCollection<SupportTicketCategory>> GetCategoriesAsync(CancellationToken cancellationToken)
     {
         return await _dbContext.SupportTicketCategories
