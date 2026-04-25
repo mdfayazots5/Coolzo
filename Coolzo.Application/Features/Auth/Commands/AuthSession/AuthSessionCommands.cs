@@ -38,8 +38,21 @@ internal static class AuthSessionPurpose
 
 internal static class AuthSessionTokenFactory
 {
+    private const string DefaultFixedTestingOtp = "123456";
+
     public static string CreateOtp()
     {
+        var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+        var fixedTestingOtp = Environment.GetEnvironmentVariable("COOLZO_FIXED_TEST_OTP");
+
+        if (string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(fixedTestingOtp)
+                ? DefaultFixedTestingOtp
+                : fixedTestingOtp.Trim();
+        }
+
         return RandomNumberGenerator.GetInt32(100000, 999999).ToString();
     }
 
@@ -143,27 +156,32 @@ public sealed class LoginOtpCommandHandler : IRequestHandler<LoginOtpCommand, Au
     private readonly CustomerAccountLookupService _customerAccountLookupService;
     private readonly ICurrentDateTime _currentDateTime;
     private readonly IOtpVerificationRepository _otpVerificationRepository;
+    private readonly IUserRepository _userRepository;
     private readonly IUnitOfWork _unitOfWork;
 
     public LoginOtpCommandHandler(
         CustomerAccountLookupService customerAccountLookupService,
         IOtpVerificationRepository otpVerificationRepository,
         AuthSessionTokenIssuer authSessionTokenIssuer,
+        IUserRepository userRepository,
         IUnitOfWork unitOfWork,
         ICurrentDateTime currentDateTime)
     {
         _customerAccountLookupService = customerAccountLookupService;
         _otpVerificationRepository = otpVerificationRepository;
         _authSessionTokenIssuer = authSessionTokenIssuer;
+        _userRepository = userRepository;
         _unitOfWork = unitOfWork;
         _currentDateTime = currentDateTime;
     }
 
     public async Task<AuthTokenResponse> Handle(LoginOtpCommand request, CancellationToken cancellationToken)
     {
-        var customerAccount = await _customerAccountLookupService.FindByLoginIdAsync(request.LoginId.Trim(), cancellationToken)
+        var loginId = request.LoginId.Trim();
+        var customerAccount = await _customerAccountLookupService.FindByLoginIdAsync(loginId, cancellationToken);
+        var user = customerAccount?.User
+            ?? await _userRepository.GetByUserNameOrEmailAsync(loginId, cancellationToken)
             ?? throw new AppException(ErrorCodes.InvalidCredentials, "The verification code is invalid or expired.", 401);
-        var user = customerAccount.User;
         var otp = await _otpVerificationRepository.GetActiveByUserAndCodeAsync(
             user.UserId,
             AuthSessionPurpose.LoginOtp,

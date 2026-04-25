@@ -139,6 +139,15 @@ public sealed class BillingRepository : IBillingRepository
         return ApplyInvoiceFilters(status, customerId).CountAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<InvoiceHeader>> ListAccountsReceivableInvoicesAsync(CancellationToken cancellationToken)
+    {
+        return await BuildInvoiceQuery(true)
+            .Where(entity => entity.BalanceAmount > 0)
+            .OrderBy(entity => entity.InvoiceDateUtc)
+            .ThenByDescending(entity => entity.InvoiceHeaderId)
+            .ToArrayAsync(cancellationToken);
+    }
+
     public Task AddPaymentTransactionAsync(PaymentTransaction paymentTransaction, CancellationToken cancellationToken)
     {
         return _dbContext.PaymentTransactions.AddAsync(paymentTransaction, cancellationToken).AsTask();

@@ -51,6 +51,8 @@ public interface IBillingRepository
 
     Task<int> CountInvoicesAsync(InvoicePaymentStatus? status, long? customerId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyCollection<InvoiceHeader>> ListAccountsReceivableInvoicesAsync(CancellationToken cancellationToken);
+
     Task AddPaymentTransactionAsync(PaymentTransaction paymentTransaction, CancellationToken cancellationToken);
 
     Task AddPaymentReceiptAsync(PaymentReceipt paymentReceipt, CancellationToken cancellationToken);

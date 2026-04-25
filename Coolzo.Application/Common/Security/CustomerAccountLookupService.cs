@@ -51,6 +51,11 @@ public sealed class CustomerAccountLookupService
             }
         }
 
+        if (!LooksLikeMobileNumber(normalizedLoginId))
+        {
+            return null;
+        }
+
         var customerByMobile = await _bookingRepository.GetCustomerByMobileAsync(normalizedLoginId, cancellationToken);
 
         if (customerByMobile?.UserId is not long userId || customerByMobile.IsGuestCustomer)
@@ -97,6 +102,12 @@ public sealed class CustomerAccountLookupService
         return IsCustomerUser(user)
             ? new CustomerAccountLookupResult(customer, user!)
             : null;
+    }
+
+    private static bool LooksLikeMobileNumber(string loginId)
+    {
+        var normalized = new string(loginId.Where(char.IsDigit).ToArray());
+        return normalized.Length is >= 10 and <= 15;
     }
 }
 

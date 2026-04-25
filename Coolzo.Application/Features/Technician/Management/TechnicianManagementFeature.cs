@@ -85,9 +85,10 @@ public sealed class GetTechnicianProfileQueryHandler : IRequestHandler<GetTechni
         var technician = await _technicianRepository.GetManagementDetailAsync(request.TechnicianId, asNoTracking: true, cancellationToken: cancellationToken)
             ?? throw new AppException(ErrorCodes.NotFound, "The technician could not be found.", 404);
 
-        var documents = await _gapPhaseERepository.GetTechnicianDocumentsAsync(request.TechnicianId, cancellationToken);
-        var assessments = await _gapPhaseERepository.GetSkillAssessmentsAsync(request.TechnicianId, cancellationToken);
-        var trainingRecords = await _gapPhaseERepository.GetTrainingRecordsAsync(request.TechnicianId, cancellationToken);
+        var (documents, assessments, trainingRecords) = await TechnicianManagementSupport.LoadOnboardingArtifactsAsync(
+            request.TechnicianId,
+            _gapPhaseERepository,
+            cancellationToken);
         var eligibility = _eligibilityService.Evaluate(technician, documents, assessments, trainingRecords);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -834,6 +835,18 @@ public sealed class GetTechnicianGpsLogQueryHandler : IRequestHandler<GetTechnic
 
 internal static class TechnicianManagementSupport
 {
+    public static async Task<(IReadOnlyCollection<TechnicianDocument> Documents, IReadOnlyCollection<SkillAssessment> Assessments, IReadOnlyCollection<TrainingRecord> TrainingRecords)> LoadOnboardingArtifactsAsync(
+        long technicianId,
+        IGapPhaseERepository gapPhaseERepository,
+        CancellationToken cancellationToken)
+    {
+        var documents = await SafeLoadAsync(() => gapPhaseERepository.GetTechnicianDocumentsAsync(technicianId, cancellationToken));
+        var assessments = await SafeLoadAsync(() => gapPhaseERepository.GetSkillAssessmentsAsync(technicianId, cancellationToken));
+        var trainingRecords = await SafeLoadAsync(() => gapPhaseERepository.GetTrainingRecordsAsync(technicianId, cancellationToken));
+
+        return (documents, assessments, trainingRecords);
+    }
+
     public static string ResolveActor(ICurrentUserContext currentUserContext, string fallback)
     {
         return string.IsNullOrWhiteSpace(currentUserContext.UserName) ? fallback : currentUserContext.UserName;
@@ -1134,12 +1147,25 @@ internal static class TechnicianManagementSupport
     {
         var technician = await technicianRepository.GetManagementDetailAsync(technicianId, asNoTracking: true, cancellationToken: cancellationToken)
             ?? throw new AppException(ErrorCodes.NotFound, "The technician could not be found.", 404);
-        var documents = await gapPhaseERepository.GetTechnicianDocumentsAsync(technicianId, cancellationToken);
-        var assessments = await gapPhaseERepository.GetSkillAssessmentsAsync(technicianId, cancellationToken);
-        var trainingRecords = await gapPhaseERepository.GetTrainingRecordsAsync(technicianId, cancellationToken);
+        var (documents, assessments, trainingRecords) = await LoadOnboardingArtifactsAsync(
+            technicianId,
+            gapPhaseERepository,
+            cancellationToken);
         var eligibility = eligibilityService.Evaluate(technician, documents, assessments, trainingRecords);
 
         return ToDetailResponse(technician, eligibility, documents, assessments, trainingRecords, DateOnly.FromDateTime(DateTime.UtcNow));
+    }
+
+    private static async Task<IReadOnlyCollection<TItem>> SafeLoadAsync<TItem>(Func<Task<IReadOnlyCollection<TItem>>> loader)
+    {
+        try
+        {
+            return await loader();
+        }
+        catch
+        {
+            return Array.Empty<TItem>();
+        }
     }
 
     private static IReadOnlyCollection<string> ResolveZoneNames(TechnicianEntity technician)
