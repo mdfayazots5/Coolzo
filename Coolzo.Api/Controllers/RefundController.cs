@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseA.CancellationRefund;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.GapPhaseA;
@@ -12,8 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/refunds")]
+[Route("api/refunds")]
 public sealed class RefundController : ApiControllerBase
 {
     private readonly ISender _sender;

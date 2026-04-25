@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.NotificationTemplate.Commands.CreateNotificationTemplate;
 using Coolzo.Application.Features.NotificationTemplate.Commands.UpdateNotificationTemplate;
 using Coolzo.Application.Features.NotificationTemplate.Queries.GetNotificationTemplateDetail;
@@ -13,9 +12,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/notification-templates")]
+[Route("api/notification-templates")]
 public sealed class NotificationTemplateController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Dashboard.Queries.GetDashboardMetrics;
 using Coolzo.Application.Features.Dashboard.Queries.GetDashboardSummary;
 using Coolzo.Contracts.Common;
@@ -10,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Policy = PermissionNames.DashboardRead)]
-[Route("api/v{version:apiVersion}/dashboard")]
+[Route("api/dashboard")]
 public sealed class DashboardController : ApiControllerBase
 {
     private readonly ISender _sender;

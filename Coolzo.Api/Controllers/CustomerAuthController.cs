@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.CustomerAuth.Commands.ChangeCustomerPassword;
 using Coolzo.Application.Features.CustomerAuth.Commands.ForgotCustomerPassword;
 using Coolzo.Application.Features.CustomerAuth.Commands.RegisterCustomer;
@@ -12,8 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/customer-auth")]
+[Route("api/customer-auth")]
 public sealed class CustomerAuthController : ApiControllerBase
 {
     private readonly ISender _sender;

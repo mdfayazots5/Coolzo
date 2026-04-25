@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Api.Mapping;
 using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Application.Features.Auth.Commands.AuthSession;
@@ -19,8 +18,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/auth")]
+[Route("api/auth")]
 public sealed class AuthController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Analytics.Queries.GetBookingAnalytics;
 using Coolzo.Application.Features.Analytics.Queries.GetCustomerAnalytics;
 using Coolzo.Application.Features.Analytics.Queries.GetInventoryAnalytics;
@@ -14,9 +13,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Policy = PermissionNames.AnalyticsRead)]
-[Route("api/v{version:apiVersion}/analytics")]
+[Route("api/analytics")]
 public sealed class AnalyticsController : ApiControllerBase
 {
     private readonly ISender _sender;

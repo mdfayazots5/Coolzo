@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.ServiceHistory.Queries.GetServiceHistory;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Responses.ServiceHistory;
@@ -8,9 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/service-history")]
+[Route("api/service-history")]
 public sealed class ServiceHistoryController : ApiControllerBase
 {
     private readonly ISender _sender;

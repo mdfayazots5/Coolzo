@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.OperationsDashboard.Queries.GetDashboardSummary;
 using Coolzo.Application.Features.ServiceRequest.Commands.CreateServiceRequestFromBooking;
 using Coolzo.Application.Features.ServiceRequest.Commands.SaveServiceRequestNote;
@@ -17,8 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/service-requests")]
+[Route("api/service-requests")]
 public sealed class ServiceRequestController : ApiControllerBase
 {
     private readonly ISender _sender;

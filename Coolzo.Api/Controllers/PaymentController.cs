@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Api.Extensions;
 using Coolzo.Api.Utilities;
 using Coolzo.Application.Features.Billing.Commands.RecordPayment;
@@ -13,9 +12,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/payments")]
+[Route("api/payments")]
 public sealed class PaymentController : ApiControllerBase
 {
     private readonly ISender _sender;

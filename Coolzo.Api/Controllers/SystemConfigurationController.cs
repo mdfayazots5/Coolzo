@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.SystemConfiguration.Commands.CreateBusinessHourConfiguration;
 using Coolzo.Application.Features.SystemConfiguration.Commands.CreateHolidayConfiguration;
 using Coolzo.Application.Features.SystemConfiguration.Commands.CreateSystemConfiguration;
@@ -17,9 +16,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}")]
+[Route("api")]
 public sealed class SystemConfigurationController : ApiControllerBase
 {
     private readonly ISender _sender;

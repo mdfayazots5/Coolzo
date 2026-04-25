@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Inventory.Commands.ConsumeJobParts;
 using Coolzo.Application.Features.Inventory.Queries.GetJobConsumption;
 using Coolzo.Contracts.Common;
@@ -11,8 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/jobs")]
+[Route("api/jobs")]
 public sealed class JobConsumptionController : ApiControllerBase
 {
     private readonly ISender _sender;

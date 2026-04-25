@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Billing.Commands.ApproveQuotation;
 using Coolzo.Application.Features.Billing.Commands.CreateQuotationFromJob;
 using Coolzo.Application.Features.Billing.Commands.RejectQuotation;
@@ -15,8 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/quotations")]
+[Route("api/quotations")]
 public sealed class QuotationController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Billing.Commands.GenerateInvoiceFromQuotation;
 using Coolzo.Application.Features.Billing.Queries.GetCustomerInvoices;
 using Coolzo.Application.Features.Billing.Queries.GetInvoiceById;
@@ -13,8 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/invoices")]
+[Route("api/invoices")]
 public sealed class InvoiceController : ApiControllerBase
 {
     private readonly ISender _sender;

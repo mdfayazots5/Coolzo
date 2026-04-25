@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Inventory.Commands.CreateItem;
 using Coolzo.Application.Features.Inventory.Commands.UpdateItem;
 using Coolzo.Application.Features.Inventory.Queries.GetItemById;
@@ -13,8 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/items")]
+[Route("api/items")]
 public sealed class ItemController : ApiControllerBase
 {
     private readonly ISender _sender;

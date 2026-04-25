@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.CommunicationPreference.Commands.CreateOrUpdateCommunicationPreference;
 using Coolzo.Application.Features.CommunicationPreference.Queries.GetCommunicationPreferenceByCustomer;
 using Coolzo.Application.Features.CommunicationPreference.Queries.GetMyCommunicationPreference;
@@ -12,9 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/communication-preferences")]
+[Route("api/communication-preferences")]
 public sealed class CommunicationPreferenceController : ApiControllerBase
 {
     private readonly ISender _sender;

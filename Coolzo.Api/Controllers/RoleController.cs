@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Api.Mapping;
 using Coolzo.Application.Common.Interfaces;
 using Coolzo.Application.Features.Role.Commands.CreateRole;
@@ -15,9 +14,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/roles")]
+[Route("api/roles")]
 public sealed class RoleController : ApiControllerBase
 {
     private readonly IRoleRepository _roleRepository;

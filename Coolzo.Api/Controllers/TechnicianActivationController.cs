@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseE.TechnicianOnboarding;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.GapPhaseE;
@@ -10,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/technicians/{technicianId:long}")]
+[Route("api/technicians/{technicianId:long}")]
 public sealed class TechnicianActivationController : ApiControllerBase
 {
     private readonly ISender _sender;

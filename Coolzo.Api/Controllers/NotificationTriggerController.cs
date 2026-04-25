@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.NotificationTriggerConfiguration.Commands.CreateNotificationTriggerConfiguration;
 using Coolzo.Application.Features.NotificationTriggerConfiguration.Commands.UpdateNotificationTriggerConfiguration;
 using Coolzo.Application.Features.NotificationTriggerConfiguration.Queries.GetNotificationTriggerList;
@@ -12,9 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/notification-triggers")]
+[Route("api/notification-triggers")]
 public sealed class NotificationTriggerController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseA.Escalation;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.GapPhaseA;
@@ -11,9 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Policy = PermissionNames.SupportManage)]
-[Route("api/v{version:apiVersion}/escalations")]
+[Route("api/escalations")]
 public sealed class EscalationController : ApiControllerBase
 {
     private readonly ISender _sender;

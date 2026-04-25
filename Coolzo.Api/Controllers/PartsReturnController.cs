@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseA.PartsReturn;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.GapPhaseA;
@@ -10,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Policy = PermissionNames.StockManage)]
-[Route("api/v{version:apiVersion}/parts-returns")]
+[Route("api/parts-returns")]
 public sealed class PartsReturnController : ApiControllerBase
 {
     private readonly ISender _sender;

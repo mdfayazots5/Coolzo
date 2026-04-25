@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.User.Commands.DeactivateUser;
 using Coolzo.Application.Features.User.Commands.CreateUser;
 using Coolzo.Application.Features.User.Commands.ReactivateUser;
@@ -17,9 +16,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/users")]
+[Route("api/users")]
 public sealed class UserController : ApiControllerBase
 {
     private readonly ISender _sender;

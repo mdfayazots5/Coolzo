@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Asp.Versioning;
 using Coolzo.Application.Common.Interfaces;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.Branch;
@@ -15,9 +14,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/branches")]
+[Route("api/branches")]
 public sealed class BranchController : ApiControllerBase
 {
     private const string BranchMasterType = "Branch";

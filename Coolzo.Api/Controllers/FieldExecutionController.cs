@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.FieldExecution.Commands.MarkTechnicianJobEnRoute;
 using Coolzo.Application.Features.FieldExecution.Commands.MarkTechnicianJobReached;
 using Coolzo.Application.Features.FieldExecution.Commands.MarkTechnicianWorkCompleted;
@@ -18,9 +17,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Roles = RoleNames.Technician)]
-[Route("api/v{version:apiVersion}/technician-jobs")]
+[Route("api/technician-jobs")]
 public sealed class FieldExecutionController : ApiControllerBase
 {
     private readonly ISender _sender;

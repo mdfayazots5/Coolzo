@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.JobAttachment.Commands.SaveJobAttachment;
 using Coolzo.Application.Features.JobAttachment.Queries.GetJobAttachments;
 using Coolzo.Contracts.Common;
@@ -11,9 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Roles = RoleNames.Technician)]
-[Route("api/v{version:apiVersion}/technician-jobs")]
+[Route("api/technician-jobs")]
 public sealed class JobAttachmentController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Diagnosis.Commands.SaveJobDiagnosis;
 using Coolzo.Application.Features.Diagnosis.Queries.GetDiagnosisIssueLookup;
 using Coolzo.Application.Features.Diagnosis.Queries.GetDiagnosisResultLookup;
@@ -12,9 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Roles = RoleNames.Technician)]
-[Route("api/v{version:apiVersion}")]
+[Route("api")]
 public sealed class DiagnosisController : ApiControllerBase
 {
     private readonly ISender _sender;

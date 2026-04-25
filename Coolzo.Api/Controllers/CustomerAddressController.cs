@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.Customer;
@@ -9,9 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/customers")]
+[Route("api/customers")]
 public sealed class CustomerAddressController : ApiControllerBase
 {
     private readonly ISender _sender;

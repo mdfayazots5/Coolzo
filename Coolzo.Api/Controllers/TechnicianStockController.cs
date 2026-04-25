@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Inventory.Commands.AssignStockToTechnician;
 using Coolzo.Application.Features.Inventory.Queries.GetTechnicianStock;
 using Coolzo.Contracts.Common;
@@ -11,8 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/technicians")]
+[Route("api/technicians")]
 public sealed class TechnicianStockController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Reporting.Queries.GetReportByDateRange;
 using Coolzo.Application.Features.Reporting.Queries.GetReportExport;
 using Coolzo.Contracts.Common;
@@ -10,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Policy = PermissionNames.ReportRead)]
-[Route("api/v{version:apiVersion}/reports")]
+[Route("api/reports")]
 public sealed class ReportController : ApiControllerBase
 {
     private readonly ISender _sender;

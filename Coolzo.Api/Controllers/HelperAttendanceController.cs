@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseE.Helpers;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.GapPhaseE;
@@ -9,9 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/helpers/{helperProfileId:long}/attendance")]
+[Route("api/helpers/{helperProfileId:long}/attendance")]
 public sealed class HelperAttendanceController : ApiControllerBase
 {
     private readonly ISender _sender;

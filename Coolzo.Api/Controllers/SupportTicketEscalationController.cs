@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Support.Commands.EscalateSupportTicket;
 using Coolzo.Application.Features.Support.Queries.GetSupportTicketEscalations;
 using Coolzo.Contracts.Common;
@@ -11,9 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/support-tickets/{supportTicketId:long}")]
+[Route("api/support-tickets/{supportTicketId:long}")]
 public sealed class SupportTicketEscalationController : ApiControllerBase
 {
     private readonly ISender _sender;

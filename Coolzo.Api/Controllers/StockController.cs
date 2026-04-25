@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Inventory.Commands.RecordStockTransaction;
 using Coolzo.Application.Features.Inventory.Commands.TransferStock;
 using Coolzo.Application.Features.Inventory.Queries.GetStockTransactions;
@@ -12,8 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/stock")]
+[Route("api/stock")]
 public sealed class StockController : ApiControllerBase
 {
     private readonly ISender _sender;

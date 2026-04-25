@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Api.Mapping;
 using Coolzo.Application.Common.Interfaces;
 using Coolzo.Application.Common.Services;
@@ -12,9 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Roles = RoleNames.SuperAdmin)]
-[Route("api/v{version:apiVersion}/admin")]
+[Route("api/admin")]
 public sealed class AdminController : ApiControllerBase
 {
     private readonly AdminActivityLogger _adminActivityLogger;

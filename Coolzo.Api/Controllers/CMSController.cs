@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.CMS.Commands.CreateCMSBanner;
 using Coolzo.Application.Features.CMS.Commands.CreateCMSBlock;
 using Coolzo.Application.Features.CMS.Commands.CreateCMSFaq;
@@ -22,8 +21,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/cms")]
+[Route("api/cms")]
 public sealed class CMSController : ApiControllerBase
 {
     private readonly ISender _sender;

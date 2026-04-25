@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Api.Extensions;
 using Coolzo.Application.Features.FieldWorkflow;
 using Coolzo.Contracts.Common;
@@ -14,9 +13,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Roles = RoleNames.Technician)]
-[Route("api/v{version:apiVersion}/field")]
+[Route("api/field")]
 public sealed class FieldWorkflowController : ApiControllerBase
 {
     private readonly ISender _sender;

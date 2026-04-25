@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.TechnicianJob.Queries.GetTechnicianJobDetail;
 using Coolzo.Application.Features.TechnicianJob.Queries.GetTechnicianJobList;
 using Coolzo.Application.Features.TechnicianJob.Queries.GetTechnicianOwnJobList;
@@ -11,9 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Roles = RoleNames.Technician)]
-[Route("api/v{version:apiVersion}/technician-jobs")]
+[Route("api/technician-jobs")]
 public sealed class TechnicianJobController : ApiControllerBase
 {
     private readonly ISender _sender;

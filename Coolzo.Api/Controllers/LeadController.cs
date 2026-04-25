@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseA.Lead;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.GapPhaseA;
@@ -10,8 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/leads")]
+[Route("api/leads")]
 public sealed class LeadController : ApiControllerBase
 {
     private readonly ISender _sender;

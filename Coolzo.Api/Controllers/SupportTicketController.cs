@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Api.Extensions;
 using Coolzo.Application.Features.Support.Commands.AssignSupportTicket;
 using Coolzo.Application.Features.Support.Commands.ChangeSupportTicketPriority;
@@ -19,9 +18,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/support-tickets")]
+[Route("api/support-tickets")]
 public sealed class SupportTicketController : ApiControllerBase
 {
     private readonly ISender _sender;

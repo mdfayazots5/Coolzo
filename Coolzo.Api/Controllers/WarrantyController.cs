@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Warranty.Commands.CreateWarrantyClaim;
 using Coolzo.Application.Features.Warranty.Queries.GetWarrantyByInvoice;
 using Coolzo.Contracts.Common;
@@ -10,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/warranty")]
+[Route("api/warranty")]
 public sealed class WarrantyController : ApiControllerBase
 {
     private readonly ISender _sender;

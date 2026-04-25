@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Amc.Commands.AssignAmcToCustomer;
 using Coolzo.Application.Features.Amc.Commands.CreateAmcPlan;
 using Coolzo.Application.Features.Amc.Commands.GenerateAmcVisits;
@@ -16,8 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/amc")]
+[Route("api/amc")]
 public sealed class AmcController : ApiControllerBase
 {
     private readonly ISender _sender;

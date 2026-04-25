@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Contracts.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,9 +5,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [AllowAnonymous]
-[Route("api/v{version:apiVersion}/health")]
+[Route("api/health")]
 public sealed class HealthController : ApiControllerBase
 {
     private readonly HealthCheckService _healthCheckService;

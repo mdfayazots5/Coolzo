@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Application.Features.Booking.Queries.GetCustomerBookingDetail;
 using Coolzo.Application.Features.Booking.Queries.GetCustomerBookings;
@@ -12,9 +11,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/customer-bookings")]
+[Route("api/customer-bookings")]
 public sealed class CustomerBookingController : ApiControllerBase
 {
     private readonly ISender _sender;

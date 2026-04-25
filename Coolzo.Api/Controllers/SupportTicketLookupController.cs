@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Support.Queries.GetSupportTicketLookupData;
 using Coolzo.Contracts.Common;
 using MediatR;
@@ -7,9 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/support-ticket-lookups")]
+[Route("api/support-ticket-lookups")]
 public sealed class SupportTicketLookupController : ApiControllerBase
 {
     private readonly ISender _sender;
@@ -29,7 +27,7 @@ public sealed class SupportTicketLookupController : ApiControllerBase
         return Success(response.Categories);
     }
 
-    [HttpGet("~/api/v{version:apiVersion}/support/categories")]
+    [HttpGet("~/api/support/categories")]
     [ProducesResponseType(typeof(ApiResponse<IReadOnlyCollection<LookupItemResponse>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<IReadOnlyCollection<LookupItemResponse>>>> GetSupportCategoriesAsync(
         CancellationToken cancellationToken)

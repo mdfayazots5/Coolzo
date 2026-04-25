@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Assignment.Commands.AssignTechnician;
 using Coolzo.Application.Features.Assignment.Commands.ReassignTechnician;
 using Coolzo.Application.Features.Assignment.Queries.GetAssignmentHistory;
@@ -12,8 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/service-requests")]
+[Route("api/service-requests")]
 public sealed class AssignmentController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.OperationsDashboard;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Responses.Operations;
@@ -9,9 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Policy = PermissionNames.OperationsDashboardRead)]
-[Route("api/v{version:apiVersion}/dashboard")]
+[Route("api/dashboard")]
 public sealed class OperationsCommandCenterController : ApiControllerBase
 {
     private readonly ISender _sender;

@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Inventory.Queries.GetItems;
 using Coolzo.Application.Features.Inventory.Queries.GetWarehouseStock;
 using Coolzo.Application.Features.Inventory.Queries.GetWarehouses;
@@ -11,9 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/inventory")]
+[Route("api/inventory")]
 public sealed class InventoryController : ApiControllerBase
 {
     private readonly ISender _sender;

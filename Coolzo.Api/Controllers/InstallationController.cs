@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseC.Installation;
 using Coolzo.Application.Features.GapPhaseA.Installation;
 using Coolzo.Contracts.Common;
@@ -13,8 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/installations")]
+[Route("api/installations")]
 public sealed class InstallationController : ApiControllerBase
 {
     private readonly ISender _sender;

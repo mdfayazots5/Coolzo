@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Support.Commands.AddSupportTicketReply;
 using Coolzo.Application.Features.Support.Queries.GetSupportTicketReplies;
 using Coolzo.Contracts.Common;
@@ -10,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/support-tickets/{supportTicketId:long}/replies")]
+[Route("api/support-tickets/{supportTicketId:long}/replies")]
 public sealed class SupportTicketReplyController : ApiControllerBase
 {
     private readonly ISender _sender;

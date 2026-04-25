@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Common.Interfaces;
 using Coolzo.Application.Features.CMS.Queries.GetPublicFAQContent;
 using Coolzo.Contracts.Common;
@@ -11,8 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/service-types")]
+[Route("api/service-types")]
 public sealed class ServiceTypesController : ApiControllerBase
 {
     private readonly IBookingLookupRepository _bookingLookupRepository;

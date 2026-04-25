@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.BookingLookup.Queries.GetAcTypes;
 using Coolzo.Application.Features.BookingLookup.Queries.GetAvailableSlots;
 using Coolzo.Application.Features.BookingLookup.Queries.GetBrands;
@@ -15,8 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/booking-lookups")]
+[Route("api/booking-lookups")]
 public sealed class BookingLookupController : ApiControllerBase
 {
     private readonly ISender _sender;

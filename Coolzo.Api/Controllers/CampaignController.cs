@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.GapPhaseA.Campaign;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.GapPhaseA;
@@ -10,9 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize(Policy = PermissionNames.BookingCreate)]
-[Route("api/v{version:apiVersion}/campaigns")]
+[Route("api/campaigns")]
 public sealed class CampaignController : ApiControllerBase
 {
     private readonly ISender _sender;

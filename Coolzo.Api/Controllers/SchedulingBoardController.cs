@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.Scheduling;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.Operations;
@@ -10,8 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
-[Route("api/v{version:apiVersion}/scheduling")]
+[Route("api/scheduling")]
 public sealed class SchedulingBoardController : ApiControllerBase
 {
     private readonly ISender _sender;

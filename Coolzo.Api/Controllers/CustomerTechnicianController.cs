@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Responses.Customer;
@@ -8,9 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}/customer-technicians")]
+[Route("api/customer-technicians")]
 public sealed class CustomerTechnicianController : ApiControllerBase
 {
     private readonly ISender _sender;

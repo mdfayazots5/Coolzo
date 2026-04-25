@@ -1,4 +1,3 @@
-using Asp.Versioning;
 using Coolzo.Application.Features.MasterDataAdmin.Commands.CreateDynamicMasterRecord;
 using Coolzo.Application.Features.MasterDataAdmin.Commands.DeleteDynamicMasterRecord;
 using Coolzo.Application.Features.MasterDataAdmin.Commands.UpdateDynamicMasterRecord;
@@ -18,9 +17,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[ApiVersion("1.0")]
 [Authorize]
-[Route("api/v{version:apiVersion}")]
+[Route("api")]
 public sealed class Phase4ConfigurationController : ApiControllerBase
 {
     private static readonly IReadOnlyDictionary<string, string> MasterTypeMap =
