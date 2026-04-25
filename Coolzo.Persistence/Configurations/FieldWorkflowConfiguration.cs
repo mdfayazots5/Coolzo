@@ -140,9 +140,16 @@ public sealed class PartsRequestItemConfiguration : IEntityTypeConfiguration<Par
         builder.Property(entity => entity.QuantityApproved).HasPrecision(12, 2);
         builder.Property(entity => entity.ItemRemarks).HasMaxLength(512);
         builder.Property(entity => entity.CurrentStatus).HasConversion<int>();
+        builder.HasIndex(entity => entity.ItemId)
+            .HasDatabaseName("IDX_tblPartsRequestItem_ItemId");
 
         builder.HasOne(entity => entity.PartsRequest)
             .WithMany(entity => entity.Items)
             .HasForeignKey(entity => entity.PartsRequestId);
+
+        builder.HasOne(entity => entity.Item)
+            .WithMany()
+            .HasForeignKey(entity => entity.ItemId)
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

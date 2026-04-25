@@ -14,8 +14,7 @@ public sealed record FieldJobProgressRequest(
     string? Remarks);
 
 public sealed record FieldPartsRequestItemRequest(
-    string PartCode,
-    string PartName,
+    long PartId,
     decimal QuantityRequested,
     string? Remarks);
 

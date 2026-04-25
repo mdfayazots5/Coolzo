@@ -654,6 +654,7 @@ public sealed class CreateFieldPartsRequestCommandHandler : IRequestHandler<Crea
     private readonly ICurrentDateTime _currentDateTime;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IFieldWorkflowRepository _fieldWorkflowRepository;
+    private readonly IInventoryRepository _inventoryRepository;
     private readonly IJobCardFactory _jobCardFactory;
     private readonly ITechnicianJobAccessService _technicianJobAccessService;
     private readonly IUnitOfWork _unitOfWork;
@@ -661,6 +662,7 @@ public sealed class CreateFieldPartsRequestCommandHandler : IRequestHandler<Crea
     public CreateFieldPartsRequestCommandHandler(
         ITechnicianJobAccessService technicianJobAccessService,
         IFieldWorkflowRepository fieldWorkflowRepository,
+        IInventoryRepository inventoryRepository,
         IJobCardFactory jobCardFactory,
         IAuditLogRepository auditLogRepository,
         IUnitOfWork unitOfWork,
@@ -669,6 +671,7 @@ public sealed class CreateFieldPartsRequestCommandHandler : IRequestHandler<Crea
     {
         _technicianJobAccessService = technicianJobAccessService;
         _fieldWorkflowRepository = fieldWorkflowRepository;
+        _inventoryRepository = inventoryRepository;
         _jobCardFactory = jobCardFactory;
         _auditLogRepository = auditLogRepository;
         _unitOfWork = unitOfWork;
@@ -701,10 +704,14 @@ public sealed class CreateFieldPartsRequestCommandHandler : IRequestHandler<Crea
 
         foreach (var item in request.Items)
         {
+            var inventoryItem = await _inventoryRepository.GetItemByIdAsync(item.PartId, cancellationToken)
+                ?? throw new InvalidOperationException($"Inventory item {item.PartId} was not found.");
+
             partsRequest.Items.Add(new PartsRequestItem
             {
-                PartCode = item.PartCode.Trim(),
-                PartName = item.PartName.Trim(),
+                ItemId = inventoryItem.ItemId,
+                PartCode = inventoryItem.ItemCode,
+                PartName = inventoryItem.ItemName,
                 QuantityRequested = item.QuantityRequested,
                 QuantityApproved = 0.00m,
                 ItemRemarks = item.Remarks?.Trim() ?? string.Empty,
@@ -2144,6 +2151,7 @@ internal static class FieldWorkflowSupport
                 .OrderBy(item => item.PartsRequestItemId)
                 .Select(item => new FieldPartsRequestItemResponse(
                     item.PartsRequestItemId,
+                    item.ItemId,
                     item.PartCode,
                     item.PartName,
                     item.QuantityRequested,
@@ -2593,8 +2601,7 @@ internal sealed class FieldPartsRequestItemValidator : AbstractValidator<FieldPa
 {
     public FieldPartsRequestItemValidator()
     {
-        RuleFor(request => request.PartCode).NotEmpty().MaximumLength(64);
-        RuleFor(request => request.PartName).NotEmpty().MaximumLength(256);
+        RuleFor(request => request.PartId).GreaterThan(0);
         RuleFor(request => request.QuantityRequested).GreaterThan(0.00m);
         RuleFor(request => request.Remarks).MaximumLength(512);
     }

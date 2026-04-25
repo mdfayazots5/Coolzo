@@ -142,6 +142,8 @@ public sealed class PartsRequestItem : AuditableEntity
 
     public long PartsRequestId { get; set; }
 
+    public long? ItemId { get; set; }
+
     public string PartCode { get; set; } = string.Empty;
 
     public string PartName { get; set; } = string.Empty;
@@ -155,4 +157,6 @@ public sealed class PartsRequestItem : AuditableEntity
     public PartsRequestStatus CurrentStatus { get; set; } = PartsRequestStatus.Pending;
 
     public PartsRequest? PartsRequest { get; set; }
+
+    public Item? Item { get; set; }
 }

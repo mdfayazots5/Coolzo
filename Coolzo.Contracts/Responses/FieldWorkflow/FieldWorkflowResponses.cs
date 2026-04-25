@@ -53,6 +53,7 @@ public sealed record FieldCustomerSignatureResponse(
 
 public sealed record FieldPartsRequestItemResponse(
     long PartsRequestItemId,
+    long? PartId,
     string PartCode,
     string PartName,
     decimal QuantityRequested,
