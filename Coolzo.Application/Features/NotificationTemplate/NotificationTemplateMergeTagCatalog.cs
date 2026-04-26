@@ -10,11 +10,15 @@ internal static partial class NotificationTemplateMergeTagCatalog
     {
         "Customer.FullName",
         "Customer.FirstName",
+        "CustomerName",
         "Booking.Reference",
+        "BookingReference",
         "Booking.SlotDate",
+        "VisitDate",
         "Booking.SlotLabel",
         "Invoice.Number",
         "Invoice.Amount",
+        "ServiceName",
         "Support.TicketNumber"
     };
 

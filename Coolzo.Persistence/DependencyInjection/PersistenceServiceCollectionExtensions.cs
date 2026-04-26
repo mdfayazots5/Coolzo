@@ -1,6 +1,7 @@
 using Coolzo.Application.Common.Interfaces;
 using Coolzo.Persistence.Context;
 using Coolzo.Persistence.Repositories;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,10 +10,14 @@ namespace Coolzo.Persistence.DependencyInjection;
 
 public static class PersistenceServiceCollectionExtensions
 {
+    private const string DefaultLocalDbConnection =
+        "Server=(localdb)\\MSSQLLocalDB;Database=Coolzo;Trusted_Connection=True;TrustServerCertificate=True;";
+
     public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)
     {
         var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? "Server=(localdb)\\MSSQLLocalDB;Database=Coolzo;Trusted_Connection=True;TrustServerCertificate=True;";
+            ?? DefaultLocalDbConnection;
+        connectionString = ResolveConnectionStringForCurrentEnvironment(connectionString, configuration);
 
         services.AddDbContext<CoolzoDbContext>(options =>
         {
@@ -50,5 +55,63 @@ public static class PersistenceServiceCollectionExtensions
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
 
         return services;
+    }
+
+    private static string ResolveConnectionStringForCurrentEnvironment(string connectionString, IConfiguration configuration)
+    {
+        if (!OperatingSystem.IsLinux() || !IsLocalDbConnectionString(connectionString))
+        {
+            return connectionString;
+        }
+
+        var explicitConnectionString =
+            Environment.GetEnvironmentVariable("COOLZO_SQL_CONNECTION")
+            ?? configuration["Database:LinuxSqlConnection"];
+        if (!string.IsNullOrWhiteSpace(explicitConnectionString))
+        {
+            return explicitConnectionString;
+        }
+
+        var sqlHost =
+            Environment.GetEnvironmentVariable("COOLZO_SQL_HOST")
+            ?? configuration["Database:LinuxSqlHost"];
+        var sqlPort =
+            Environment.GetEnvironmentVariable("COOLZO_SQL_PORT")
+            ?? configuration["Database:LinuxSqlPort"];
+        var sqlUser =
+            Environment.GetEnvironmentVariable("COOLZO_SQL_USER")
+            ?? configuration["Database:LinuxSqlUser"];
+        var sqlPassword =
+            Environment.GetEnvironmentVariable("COOLZO_SQL_PASSWORD")
+            ?? configuration["Database:LinuxSqlPassword"];
+
+        if (string.IsNullOrWhiteSpace(sqlHost)
+            || string.IsNullOrWhiteSpace(sqlUser)
+            || string.IsNullOrWhiteSpace(sqlPassword))
+        {
+            return connectionString;
+        }
+
+        var builder = new SqlConnectionStringBuilder(connectionString)
+        {
+            DataSource = string.IsNullOrWhiteSpace(sqlPort) ? sqlHost : $"{sqlHost},{sqlPort}",
+            IntegratedSecurity = false,
+            UserID = sqlUser,
+            Password = sqlPassword,
+            TrustServerCertificate = true
+        };
+
+        return builder.ConnectionString;
+    }
+
+    private static bool IsLocalDbConnectionString(string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return false;
+        }
+
+        return connectionString.Contains("(localdb)", StringComparison.OrdinalIgnoreCase)
+            || connectionString.Contains("MSSQLLocalDB", StringComparison.OrdinalIgnoreCase);
     }
 }

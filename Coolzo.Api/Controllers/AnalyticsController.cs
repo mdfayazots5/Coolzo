@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Coolzo.Api.Controllers;
 
-[Authorize(Policy = PermissionNames.AnalyticsRead)]
 [Route("api/analytics")]
 public sealed class AnalyticsController : ApiControllerBase
 {
@@ -24,6 +23,7 @@ public sealed class AnalyticsController : ApiControllerBase
         _sender = sender;
     }
 
+    [Authorize(Policy = PermissionNames.AnalyticsRead)]
     [HttpGet("bookings")]
     [ProducesResponseType(typeof(ApiResponse<BookingAnalyticsResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<BookingAnalyticsResponse>>> GetBookingsAsync(
@@ -41,6 +41,7 @@ public sealed class AnalyticsController : ApiControllerBase
         return Success(response);
     }
 
+    [Authorize(Policy = PermissionNames.AnalyticsRead)]
     [HttpGet("revenue")]
     [ProducesResponseType(typeof(ApiResponse<RevenueAnalyticsResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<RevenueAnalyticsResponse>>> GetRevenueAsync(
@@ -57,6 +58,7 @@ public sealed class AnalyticsController : ApiControllerBase
         return Success(response);
     }
 
+    [Authorize(Policy = PermissionNames.AnalyticsRead)]
     [HttpGet("technicians")]
     [ProducesResponseType(typeof(ApiResponse<TechnicianPerformanceResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<TechnicianPerformanceResponse>>> GetTechniciansAsync(
@@ -74,6 +76,7 @@ public sealed class AnalyticsController : ApiControllerBase
         return Success(response);
     }
 
+    [Authorize(Policy = PermissionNames.AnalyticsRead)]
     [HttpGet("customers")]
     [ProducesResponseType(typeof(ApiResponse<CustomerAnalyticsResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<CustomerAnalyticsResponse>>> GetCustomersAsync(
@@ -89,6 +92,7 @@ public sealed class AnalyticsController : ApiControllerBase
         return Success(response);
     }
 
+    [Authorize(Policy = PermissionNames.SupportRead)]
     [HttpGet("support")]
     [ProducesResponseType(typeof(ApiResponse<SupportAnalyticsResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<SupportAnalyticsResponse>>> GetSupportAsync(
@@ -105,6 +109,7 @@ public sealed class AnalyticsController : ApiControllerBase
         return Success(response);
     }
 
+    [Authorize(Policy = PermissionNames.AnalyticsRead)]
     [HttpGet("inventory")]
     [ProducesResponseType(typeof(ApiResponse<InventoryAnalyticsResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<InventoryAnalyticsResponse>>> GetInventoryAsync(
@@ -120,4 +125,3 @@ public sealed class AnalyticsController : ApiControllerBase
         return Success(response);
     }
 }
-

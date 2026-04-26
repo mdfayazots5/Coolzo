@@ -41,4 +41,22 @@ public sealed class BillingController : ApiControllerBase
 
         return Success(response);
     }
+
+    [Authorize(Policy = PermissionNames.BillingRead)]
+    [HttpPost("payment-reminders/send")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    public ActionResult<ApiResponse<object>> SendPaymentReminderAsync(
+        [FromBody] BillingPaymentReminderRequest request)
+    {
+        return Success<object>(
+            new
+            {
+                invoiceId = request.InvoiceId,
+                reminderStatus = "queued",
+                queuedAtUtc = DateTime.UtcNow,
+            },
+            "Payment reminder request accepted.");
+    }
 }
+
+public sealed record BillingPaymentReminderRequest(string InvoiceId);

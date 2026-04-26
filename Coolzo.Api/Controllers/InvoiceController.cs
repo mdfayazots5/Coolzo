@@ -1,4 +1,5 @@
 using Coolzo.Application.Features.Billing.Commands.GenerateInvoiceFromQuotation;
+using Coolzo.Application.Features.Billing.Commands.RecordPayment;
 using Coolzo.Application.Features.Billing.Queries.GetCustomerInvoices;
 using Coolzo.Application.Features.Billing.Queries.GetInvoiceById;
 using Coolzo.Application.Features.Billing.Queries.SearchInvoices;
@@ -63,6 +64,38 @@ public sealed class InvoiceController : ApiControllerBase
     }
 
     [Authorize]
+    [HttpPost("{id:long}/mark-paid")]
+    [ProducesResponseType(typeof(ApiResponse<InvoiceDetailResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<InvoiceDetailResponse>>> MarkPaidAsync(
+        [FromRoute] long id,
+        [FromBody] InvoiceMarkPaidRequest request,
+        CancellationToken cancellationToken)
+    {
+        var normalizedMethod = NormalizePaymentMethod(request.Method);
+        var referenceNumber = string.IsNullOrWhiteSpace(request.Reference)
+            ? $"MANUAL-{id}-{DateTime.UtcNow:yyyyMMddHHmmss}"
+            : request.Reference.Trim();
+
+        await _sender.Send(
+            new RecordPaymentCommand(
+                id,
+                request.Amount,
+                normalizedMethod,
+                referenceNumber,
+                request.Notes,
+                $"invoice-mark-paid-{id}-{referenceNumber}",
+                null,
+                null,
+                null,
+                false,
+                null),
+            cancellationToken);
+
+        var updated = await _sender.Send(new GetInvoiceByIdQuery(id), cancellationToken);
+        return Success(updated, "Invoice payment recorded successfully.");
+    }
+
+    [Authorize]
     [HttpGet("{id:long}/pdf")]
     public async Task<IActionResult> DownloadPdfAsync(
         [FromRoute] long id,
@@ -107,4 +140,26 @@ public sealed class InvoiceController : ApiControllerBase
 
         return Success(response);
     }
+
+    private static string NormalizePaymentMethod(string paymentMethod)
+    {
+        var normalized = paymentMethod.Trim().Replace(" ", string.Empty, StringComparison.OrdinalIgnoreCase).Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase);
+
+        return normalized.ToLowerInvariant() switch
+        {
+            "cash" => "Cash",
+            "cheque" => "Cash",
+            "banktransfer" => "Cash",
+            "upi" => "Upi",
+            "card" => "Card",
+            "online" => "Upi",
+            _ => paymentMethod,
+        };
+    }
 }
+
+public sealed record InvoiceMarkPaidRequest(
+    decimal Amount,
+    string Method,
+    string? Reference,
+    string? Notes);
