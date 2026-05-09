@@ -3,6 +3,7 @@ using Coolzo.Application.Common.Mappings;
 using Coolzo.Application.Common.Models;
 using Coolzo.Application.Common.Validation;
 using Coolzo.Contracts.Responses.Analytics;
+using Coolzo.Domain.Entities;
 using Coolzo.Shared.Models;
 using FluentValidation;
 using MediatR;
@@ -30,6 +31,8 @@ public sealed class GetDashboardMetricsQueryValidator : AbstractValidator<GetDas
 
 public sealed class GetDashboardMetricsQueryHandler : IRequestHandler<GetDashboardMetricsQuery, DashboardMetricsResponse>
 {
+    private const int DashboardFallbackLookbackDays = 365;
+
     private readonly IAnalyticsReadRepository _analyticsReadRepository;
     private readonly ICurrentDateTime _currentDateTime;
 
@@ -43,6 +46,7 @@ public sealed class GetDashboardMetricsQueryHandler : IRequestHandler<GetDashboa
 
     public async Task<DashboardMetricsResponse> Handle(GetDashboardMetricsQuery request, CancellationToken cancellationToken)
     {
+        var today = DateOnly.FromDateTime(_currentDateTime.UtcNow);
         var filter = AnalyticsQueryFilter.Create(
             request.DateFrom,
             request.DateTo,
@@ -56,11 +60,55 @@ public sealed class GetDashboardMetricsQueryHandler : IRequestHandler<GetDashboa
         var revenueAnalytics = await _analyticsReadRepository.GetRevenueAnalyticsAsync(filter, cancellationToken);
         var supportAnalytics = await _analyticsReadRepository.GetSupportAnalyticsAsync(filter, null, cancellationToken);
 
+        if (ShouldUseHistoricalFallback(request, dashboardSummary, bookingAnalytics, revenueAnalytics, supportAnalytics))
+        {
+            var fallbackFilter = AnalyticsQueryFilter.Create(
+                today.AddDays(-DashboardFallbackLookbackDays),
+                today,
+                request.TrendBy,
+                null,
+                null,
+                _currentDateTime.UtcNow);
+
+            bookingAnalytics = await _analyticsReadRepository.GetBookingAnalyticsAsync(fallbackFilter, null, cancellationToken);
+            revenueAnalytics = await _analyticsReadRepository.GetRevenueAnalyticsAsync(fallbackFilter, cancellationToken);
+            supportAnalytics = await _analyticsReadRepository.GetSupportAnalyticsAsync(fallbackFilter, null, cancellationToken);
+        }
+
         return AnalyticsResponseMapper.ToDashboardMetrics(
             dashboardSummary,
             bookingAnalytics,
             revenueAnalytics,
             supportAnalytics);
     }
-}
 
+    private static bool ShouldUseHistoricalFallback(
+        GetDashboardMetricsQuery request,
+        DashboardSummaryReadModel dashboardSummary,
+        BookingAnalyticsReadModel bookingAnalytics,
+        RevenueAnalyticsReadModel revenueAnalytics,
+        SupportAnalyticsReadModel supportAnalytics)
+    {
+        if (request.DateFrom is not null || request.DateTo is not null)
+        {
+            return false;
+        }
+
+        var summaryHasData =
+            dashboardSummary.TotalBookings > 0 ||
+            dashboardSummary.TotalServiceRequests > 0 ||
+            dashboardSummary.TotalJobs > 0 ||
+            dashboardSummary.TotalRevenue > 0 ||
+            dashboardSummary.TotalSupportTickets > 0;
+
+        if (!summaryHasData)
+        {
+            return false;
+        }
+
+        return bookingAnalytics.TotalBookings == 0 &&
+               revenueAnalytics.TotalRevenue == 0 &&
+               revenueAnalytics.InvoiceCount == 0 &&
+               supportAnalytics.TotalTickets == 0;
+    }
+}
