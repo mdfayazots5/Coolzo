@@ -39,18 +39,6 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             totalSupportTickets = GetInt64(reader, "TotalSupportTickets");
         }
 
-        var statusDistribution = new List<AnalyticsBreakdownItemReadModel>();
-
-        if (await reader.NextResultAsync(cancellationToken))
-        {
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                statusDistribution.Add(new AnalyticsBreakdownItemReadModel(
-                    GetString(reader, "Label"),
-                    GetDecimal(reader, "Value")));
-            }
-        }
-
         return new DashboardSummaryReadModel(
             totalBookings,
             totalServiceRequests,
@@ -58,7 +46,7 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             totalRevenue,
             totalAmcCustomers,
             totalSupportTickets,
-            statusDistribution);
+            Array.Empty<AnalyticsBreakdownItemReadModel>());
     }
 
     public async Task<BookingAnalyticsReadModel> GetBookingAnalyticsAsync(

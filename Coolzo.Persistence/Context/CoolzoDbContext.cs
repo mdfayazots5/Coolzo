@@ -115,6 +115,10 @@ public sealed class CoolzoDbContext : DbContext
 
     public DbSet<QuotationLine> QuotationLines => Set<QuotationLine>();
 
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+
+    public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+
     public DbSet<PartsRequest> PartsRequests => Set<PartsRequest>();
 
     public DbSet<PartsRequestItem> PartsRequestItems => Set<PartsRequestItem>();

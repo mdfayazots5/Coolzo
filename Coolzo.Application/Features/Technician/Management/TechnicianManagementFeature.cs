@@ -921,11 +921,32 @@ internal static class TechnicianManagementSupport
                      .GroupBy(item => item.SkillName.Trim(), StringComparer.OrdinalIgnoreCase)
                      .Select(group => group.First()))
         {
+            var skillName = skill.SkillName.Trim();
+            var existingSkill = technician.Skills
+                .Where(entity => entity.SkillName.Equals(skillName, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(entity => entity.TechnicianSkillId)
+                .FirstOrDefault();
+
+            if (existingSkill is not null)
+            {
+                existingSkill.SkillCode = skill.SkillCode?.Trim() ?? string.Empty;
+                existingSkill.SkillName = skillName;
+                existingSkill.SkillCategory = skill.SkillCategory.Trim();
+                existingSkill.CertifiedOnUtc = skill.CertifiedOnUtc;
+                existingSkill.IsDeleted = false;
+                existingSkill.DateDeleted = null;
+                existingSkill.DeletedBy = null;
+                existingSkill.LastUpdated = now;
+                existingSkill.UpdatedBy = actor;
+                existingSkill.IPAddress = ipAddress;
+                continue;
+            }
+
             technician.Skills.Add(
                 new TechnicianSkill
                 {
                     SkillCode = skill.SkillCode?.Trim() ?? string.Empty,
-                    SkillName = skill.SkillName.Trim(),
+                    SkillName = skillName,
                     SkillCategory = skill.SkillCategory.Trim(),
                     CertifiedOnUtc = skill.CertifiedOnUtc,
                     CreatedBy = actor,
@@ -945,13 +966,31 @@ internal static class TechnicianManagementSupport
     {
         foreach (var zoneId in zoneIds)
         {
+            var isPrimaryZone = primaryZoneId.HasValue
+                ? primaryZoneId.Value == zoneId
+                : zoneIds.FirstOrDefault() == zoneId;
+            var existingZone = technician.Zones
+                .Where(entity => entity.ZoneId == zoneId)
+                .OrderByDescending(entity => entity.TechnicianZoneId)
+                .FirstOrDefault();
+
+            if (existingZone is not null)
+            {
+                existingZone.IsPrimaryZone = isPrimaryZone;
+                existingZone.IsDeleted = false;
+                existingZone.DateDeleted = null;
+                existingZone.DeletedBy = null;
+                existingZone.LastUpdated = now;
+                existingZone.UpdatedBy = actor;
+                existingZone.IPAddress = ipAddress;
+                continue;
+            }
+
             technician.Zones.Add(
                 new TechnicianZone
                 {
                     ZoneId = zoneId,
-                    IsPrimaryZone = primaryZoneId.HasValue
-                        ? primaryZoneId.Value == zoneId
-                        : zoneIds.FirstOrDefault() == zoneId,
+                    IsPrimaryZone = isPrimaryZone,
                     CreatedBy = actor,
                     DateCreated = now,
                     IPAddress = ipAddress

@@ -24,7 +24,7 @@ public static class AnalyticsResponseMapper
     {
         return new DashboardMetricsResponse(
             ToTrendPoints(bookingAnalytics.BookingTrends),
-            ToBreakdownItems(summary.StatusDistribution),
+            ToBreakdownItems(bookingAnalytics.StatusDistribution),
             new RevenueSummarySnapshotResponse(
                 revenueAnalytics.TotalRevenue,
                 revenueAnalytics.PaidRevenue,
@@ -182,4 +182,3 @@ public static class AnalyticsResponseMapper
             .ToArray();
     }
 }
-

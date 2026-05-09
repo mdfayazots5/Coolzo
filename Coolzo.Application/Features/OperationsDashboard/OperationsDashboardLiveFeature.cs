@@ -257,18 +257,12 @@ public sealed class GetOperationsLiveMapQueryHandler : IRequestHandler<GetOperat
         var serviceRequests = await OperationsDashboardLiveSupport.GetAllServiceRequestsAsync(_serviceRequestRepository, cancellationToken);
         var technicians = await OperationsDashboardLiveSupport.GetActiveTechniciansAsync(_technicianRepository, cancellationToken);
 
-        var technicianGpsTasks = technicians
-            .Select(async technician =>
-            {
-                var logs = await _technicianRepository.GetGpsLogsAsync(technician.TechnicianId, today, cancellationToken);
-                return new
-                {
-                    Technician = technician,
-                    Logs = logs
-                };
-            });
-
-        var technicianGpsResults = await Task.WhenAll(technicianGpsTasks);
+        var technicianGpsResults = new List<(DomainTechnician Technician, IReadOnlyCollection<TechnicianGpsLog> Logs)>();
+        foreach (var technician in technicians)
+        {
+            var logs = await _technicianRepository.GetGpsLogsAsync(technician.TechnicianId, today, cancellationToken);
+            technicianGpsResults.Add((technician, logs));
+        }
 
         var technicianPins = technicianGpsResults
             .Where(result => result.Logs.Count > 0)

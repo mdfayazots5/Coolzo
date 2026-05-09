@@ -34,6 +34,12 @@ public interface ICustomerAppRepository
 
     Task<IReadOnlyCollection<CustomerReview>> ListReviewsAsync(long? serviceId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyCollection<CustomerReview>> ListFeedbackAsync(long? serviceId, CancellationToken cancellationToken);
+
+    Task<CustomerReview?> GetFeedbackByIdAsync(long customerReviewId, CancellationToken cancellationToken);
+
+    Task<CustomerReview?> GetFeedbackByIdForUpdateAsync(long customerReviewId, CancellationToken cancellationToken);
+
     Task AddReviewAsync(CustomerReview customerReview, CancellationToken cancellationToken);
 
     Task AddAppFeedbackAsync(CustomerAppFeedback appFeedback, CancellationToken cancellationToken);

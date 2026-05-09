@@ -148,6 +148,25 @@ public sealed class CustomerAppRepository : ICustomerAppRepository
     {
         var query = _dbContext.CustomerReviews
             .AsNoTracking()
+            .Where(entity => entity.IsActive &&
+                !entity.IsDeleted &&
+                entity.IsPublished &&
+                entity.DisplayOnWeb);
+
+        if (serviceId.HasValue)
+        {
+            query = query.Where(entity => entity.ServiceId == serviceId.Value);
+        }
+
+        return await query
+            .OrderByDescending(entity => entity.DateCreated)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<CustomerReview>> ListFeedbackAsync(long? serviceId, CancellationToken cancellationToken)
+    {
+        var query = _dbContext.CustomerReviews
+            .AsNoTracking()
             .Where(entity => entity.IsActive && !entity.IsDeleted);
 
         if (serviceId.HasValue)
@@ -158,6 +177,27 @@ public sealed class CustomerAppRepository : ICustomerAppRepository
         return await query
             .OrderByDescending(entity => entity.DateCreated)
             .ToArrayAsync(cancellationToken);
+    }
+
+    public Task<CustomerReview?> GetFeedbackByIdAsync(long customerReviewId, CancellationToken cancellationToken)
+    {
+        return _dbContext.CustomerReviews
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                entity => entity.CustomerReviewId == customerReviewId &&
+                    entity.IsActive &&
+                    !entity.IsDeleted,
+                cancellationToken);
+    }
+
+    public Task<CustomerReview?> GetFeedbackByIdForUpdateAsync(long customerReviewId, CancellationToken cancellationToken)
+    {
+        return _dbContext.CustomerReviews
+            .FirstOrDefaultAsync(
+                entity => entity.CustomerReviewId == customerReviewId &&
+                    entity.IsActive &&
+                    !entity.IsDeleted,
+                cancellationToken);
     }
 
     public Task AddReviewAsync(CustomerReview customerReview, CancellationToken cancellationToken)
