@@ -10,17 +10,24 @@ namespace Coolzo.Persistence.DependencyInjection;
 
 public static class PersistenceServiceCollectionExtensions
 {
+    private const string SqlServerProvider = "SqlServer";
+    private const string PostgreSqlProvider = "Postgres";
     private const string DefaultLocalDbConnection =
         "Server=(localdb)\\MSSQLLocalDB;Database=Coolzo;Trusted_Connection=True;TrustServerCertificate=True;";
 
     public static IServiceCollection AddPersistence(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection")
-            ?? DefaultLocalDbConnection;
-        connectionString = ResolveConnectionStringForCurrentEnvironment(connectionString, configuration);
+        var provider = ResolveDatabaseProvider(configuration);
+        var connectionString = ResolveConnectionString(configuration, provider);
 
         services.AddDbContext<CoolzoDbContext>(options =>
         {
+            if (IsPostgreSqlProvider(provider))
+            {
+                options.UseNpgsql(connectionString);
+                return;
+            }
+
             options.UseSqlServer(connectionString);
         });
 
@@ -57,7 +64,52 @@ public static class PersistenceServiceCollectionExtensions
         return services;
     }
 
-    private static string ResolveConnectionStringForCurrentEnvironment(string connectionString, IConfiguration configuration)
+    private static string ResolveConnectionString(IConfiguration configuration, string provider)
+    {
+        if (IsPostgreSqlProvider(provider))
+        {
+            var postgresConnectionString =
+                Environment.GetEnvironmentVariable("COOLZO_POSTGRES_CONNECTION")
+                ?? configuration.GetConnectionString("PostgresConnection");
+
+            if (!string.IsNullOrWhiteSpace(postgresConnectionString))
+            {
+                return postgresConnectionString;
+            }
+
+            throw new InvalidOperationException(
+                "Database provider 'Postgres' is enabled, but no PostgreSQL connection string was configured. Set ConnectionStrings:PostgresConnection or COOLZO_POSTGRES_CONNECTION.");
+        }
+
+        var sqlServerConnectionString =
+            Environment.GetEnvironmentVariable("COOLZO_SQL_CONNECTION")
+            ?? configuration.GetConnectionString("SqlServerConnection")
+            ?? configuration.GetConnectionString("DefaultConnection")
+            ?? DefaultLocalDbConnection;
+
+        return ResolveSqlServerConnectionStringForCurrentEnvironment(sqlServerConnectionString, configuration);
+    }
+
+    private static string ResolveDatabaseProvider(IConfiguration configuration)
+    {
+        var provider =
+            Environment.GetEnvironmentVariable("COOLZO_DB_PROVIDER")
+            ?? configuration["Database:Provider"]
+            ?? SqlServerProvider;
+
+        if (string.Equals(provider, SqlServerProvider, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, PostgreSqlProvider, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, "PostgreSql", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, "Npgsql", StringComparison.OrdinalIgnoreCase))
+        {
+            return provider;
+        }
+
+        throw new InvalidOperationException(
+            $"Unsupported database provider '{provider}'. Supported values: {SqlServerProvider}, {PostgreSqlProvider}.");
+    }
+
+    private static string ResolveSqlServerConnectionStringForCurrentEnvironment(string connectionString, IConfiguration configuration)
     {
         if (!OperatingSystem.IsLinux() || !IsLocalDbConnectionString(connectionString))
         {
@@ -102,6 +154,13 @@ public static class PersistenceServiceCollectionExtensions
         };
 
         return builder.ConnectionString;
+    }
+
+    private static bool IsPostgreSqlProvider(string provider)
+    {
+        return string.Equals(provider, PostgreSqlProvider, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, "PostgreSql", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(provider, "Npgsql", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsLocalDbConnectionString(string connectionString)
