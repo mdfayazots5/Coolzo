@@ -5,6 +5,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Coolzo.Persistence.DependencyInjection;
 
@@ -24,11 +25,24 @@ public static class PersistenceServiceCollectionExtensions
         {
             if (IsPostgreSqlProvider(provider))
             {
-                options.UseNpgsql(connectionString);
+                var npgsqlBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+                {
+                    Timeout = 10,
+                    CommandTimeout = 30,
+                };
+
+                options.UseNpgsql(npgsqlBuilder.ConnectionString, npgsql =>
+                {
+                    npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
+                    npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                });
                 return;
             }
 
-            options.UseSqlServer(connectionString);
+            options.UseSqlServer(connectionString, sqlServer =>
+            {
+                sqlServer.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null);
+            });
         });
 
         services.AddScoped<IBookingLookupRepository, BookingLookupRepository>();
