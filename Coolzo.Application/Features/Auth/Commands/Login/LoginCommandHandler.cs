@@ -14,12 +14,9 @@ using DomainUser = Coolzo.Domain.Entities.User;
 
 public sealed class LoginCommandHandler : IRequestHandler<LoginCommand, AuthTokenResponse>
 {
-    private static readonly string[] TwoFactorRoles =
-    [
-        RoleNames.SuperAdmin,
-        RoleNames.Admin,
-        "FinanceManager"
-    ];
+    // 2FA is disabled until OTP delivery (email/SMS) is implemented.
+    // Re-enable by adding roles back: RoleNames.SuperAdmin, RoleNames.Admin, "FinanceManager"
+    private static readonly string[] TwoFactorRoles = [];
 
     private readonly IAuditLogRepository _auditLogRepository;
     private readonly AuthenticatedUserProfileFactory _authenticatedUserProfileFactory;
