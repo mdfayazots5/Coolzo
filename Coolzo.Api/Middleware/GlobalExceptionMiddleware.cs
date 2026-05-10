@@ -60,6 +60,11 @@ public sealed class GlobalExceptionMiddleware
                     context.TraceIdentifier,
                     appException.Errors.Select(error => new ApiError(error.Code, error.Message)).ToArray()));
         }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            _logger.LogInformation("Request cancelled by client: {Method} {Path}", context.Request.Method, context.Request.Path);
+            context.Response.StatusCode = 499;
+        }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Unhandled exception while processing request.");
