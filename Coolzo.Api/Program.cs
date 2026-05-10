@@ -10,13 +10,14 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddPresentation();
 
-// CORS: allow local frontend dev servers
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
         policy
             .WithOrigins(
+                "https://coolzo.in",
+                "https://www.coolzo.in",
                 "http://127.0.0.1:4200",
                 "http://localhost:4200",
                 "http://127.0.0.1:3000",
