@@ -96,6 +96,8 @@ public sealed class GlobalExceptionMiddleware
                 .Replace(':', '.')
                 .Replace('/', '.');
 
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
             await repository.AddSystemAlertAsync(
                 new SystemAlert
                 {
@@ -114,9 +116,9 @@ public sealed class GlobalExceptionMiddleware
                     DateCreated = currentDateTime.UtcNow,
                     IPAddress = context.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1"
                 },
-                context.RequestAborted);
+                cts.Token);
 
-            await unitOfWork.SaveChangesAsync(context.RequestAborted);
+            await unitOfWork.SaveChangesAsync(cts.Token);
         }
         catch (Exception trackingException)
         {
