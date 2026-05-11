@@ -21,7 +21,16 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
 
     public async Task<DashboardSummaryReadModel> GetDashboardSummaryAsync(CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("public.uspGetDashboardSummary", cancellationToken);
+        // Npgsql 8: CommandType.StoredProcedure generates CALL (not SELECT * FROM).
+        // Dashboard uses a PostgreSQL FUNCTION, so it must be called via CommandType.Text.
+        var connection = _dbContext.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM public.uspgetdashboardsummary()";
+        command.CommandType = System.Data.CommandType.Text;
+
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         long totalBookings = 0;
