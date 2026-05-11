@@ -5,8 +5,6 @@ using Coolzo.Application.Common.Models;
 using Coolzo.Domain.Entities;
 using Coolzo.Persistence.Context;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using NpgsqlTypes;
 
 namespace Coolzo.Persistence.Repositories;
 
@@ -14,572 +12,806 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
 {
     private readonly CoolzoDbContext _dbContext;
 
-    public AnalyticsReadRepository(CoolzoDbContext dbContext)
+    public AnalyticsReadRepository(CoolzoDbContext dbContext) => _dbContext = dbContext;
+
+    // =========================================================
+    // Dashboard Summary
+    // =========================================================
+    public async Task<DashboardSummaryReadModel> GetDashboardSummaryAsync(CancellationToken ct)
     {
-        _dbContext = dbContext;
-    }
+        var conn = await OpenAsync(ct);
+        await using var cmd = Cmd(conn, @"
+            SELECT
+                (SELECT COUNT(*)::BIGINT FROM public.""tblBooking""        WHERE NOT COALESCE(""IsDeleted"", FALSE)),
+                (SELECT COUNT(*)::BIGINT FROM public.""tblServiceRequest"" WHERE NOT COALESCE(""IsDeleted"", FALSE)),
+                (SELECT COUNT(*)::BIGINT FROM public.""tblJobCard""        WHERE NOT COALESCE(""IsDeleted"", FALSE)),
+                (SELECT COALESCE(SUM(""GrandTotalAmount""), 0)::NUMERIC(18,2)
+                        FROM public.""tblInvoiceHeader""                   WHERE NOT COALESCE(""IsDeleted"", FALSE)),
+                (SELECT COUNT(*)::BIGINT FROM public.""tblCustomerAMC""    WHERE NOT COALESCE(""IsDeleted"", FALSE)),
+                (SELECT COUNT(*)::BIGINT FROM public.""tblSupportTicket""  WHERE NOT COALESCE(""IsDeleted"", FALSE))");
 
-    public async Task<DashboardSummaryReadModel> GetDashboardSummaryAsync(CancellationToken cancellationToken)
-    {
-        // Npgsql 8: CommandType.StoredProcedure generates CALL (not SELECT * FROM).
-        // Dashboard uses a PostgreSQL FUNCTION, so it must be called via CommandType.Text.
-        var connection = _dbContext.Database.GetDbConnection();
-        if (connection.State != System.Data.ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM public.uspgetdashboardsummary()";
-        command.CommandType = System.Data.CommandType.Text;
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-        long totalBookings = 0;
-        long totalServiceRequests = 0;
-        long totalJobs = 0;
-        decimal totalRevenue = 0;
-        long totalAmcCustomers = 0;
-        long totalSupportTickets = 0;
-
-        if (await reader.ReadAsync(cancellationToken))
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        long tb = 0, tsr = 0, tj = 0, tamc = 0, tst = 0; decimal rev = 0;
+        if (await r.ReadAsync(ct))
         {
-            totalBookings = GetInt64(reader, "TotalBookings");
-            totalServiceRequests = GetInt64(reader, "TotalServiceRequests");
-            totalJobs = GetInt64(reader, "TotalJobs");
-            totalRevenue = GetDecimal(reader, "TotalRevenue");
-            totalAmcCustomers = GetInt64(reader, "TotalAmcCustomers");
-            totalSupportTickets = GetInt64(reader, "TotalSupportTickets");
+            tb   = r.IsDBNull(0) ? 0 : r.GetInt64(0);
+            tsr  = r.IsDBNull(1) ? 0 : r.GetInt64(1);
+            tj   = r.IsDBNull(2) ? 0 : r.GetInt64(2);
+            rev  = r.IsDBNull(3) ? 0 : r.GetDecimal(3);
+            tamc = r.IsDBNull(4) ? 0 : r.GetInt64(4);
+            tst  = r.IsDBNull(5) ? 0 : r.GetInt64(5);
         }
-
-        return new DashboardSummaryReadModel(
-            totalBookings,
-            totalServiceRequests,
-            totalJobs,
-            totalRevenue,
-            totalAmcCustomers,
-            totalSupportTickets,
+        return new DashboardSummaryReadModel(tb, tsr, tj, rev, tamc, tst,
             Array.Empty<AnalyticsBreakdownItemReadModel>());
     }
 
+    // =========================================================
+    // Booking Analytics
+    // =========================================================
     public async Task<BookingAnalyticsReadModel> GetBookingAnalyticsAsync(
-        AnalyticsQueryFilter filter,
-        int? bookingStatus,
-        CancellationToken cancellationToken)
+        AnalyticsQueryFilter filter, int? bookingStatus, CancellationToken ct)
     {
-        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
-        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
-        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetBookingAnalytics", conn, tx);
+        var conn   = await OpenAsync(ct);
+        var df     = filter.DateFrom.ToDateTime(TimeOnly.MinValue);
+        var dt     = filter.DateTo.ToDateTime(TimeOnly.MinValue);
+        var svcId  = filter.ServiceId ?? 0L;
+        var status = bookingStatus ?? 0;
+        var trend  = NormaliseTrend(filter.TrendBy);
 
-        AddDateParameters(cmd, filter);
-        AddParameter(cmd, "@ServiceId", filter.ServiceId ?? 0L);
-        AddParameter(cmd, "@Status",    bookingStatus ?? 0);
-        AddRefCursors(cmd, 4);
+        long totalBookings = 0, pending = 0, confirmed = 0, cancelled = 0;
+        decimal avg = 0;
 
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        long totalBookings = 0, pendingBookings = 0, confirmedBookings = 0, cancelledBookings = 0;
-        decimal averageBookingsPerPeriod = 0;
-
-        if (await reader.ReadAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            SELECT
+                COUNT(*)::BIGINT AS ""TotalBookings"",
+                SUM(CASE WHEN b.""BookingStatus"" = 1 THEN 1 ELSE 0 END)::BIGINT AS ""PendingBookings"",
+                SUM(CASE WHEN b.""BookingStatus"" = 2 THEN 1 ELSE 0 END)::BIGINT AS ""ConfirmedBookings"",
+                SUM(CASE WHEN b.""BookingStatus"" = 3 THEN 1 ELSE 0 END)::BIGINT AS ""CancelledBookings"",
+                CASE WHEN EXTRACT(EPOCH FROM (@dt - @df)) > 0
+                     THEN ROUND(COUNT(*)::NUMERIC /
+                          (EXTRACT(EPOCH FROM (@dt - @df)) /
+                           EXTRACT(EPOCH FROM CASE @trend
+                               WHEN 'week'  THEN INTERVAL '7 days'
+                               WHEN 'month' THEN INTERVAL '30 days'
+                               ELSE              INTERVAL '1 day' END)), 2)
+                     ELSE 0 END::NUMERIC(18,2) AS ""AverageBookingsPerPeriod""
+            FROM public.""tblBooking"" b
+            WHERE NOT COALESCE(b.""IsDeleted"", FALSE)
+              AND b.""BookingDateUtc"" >= @df AND b.""BookingDateUtc"" < @dt
+              AND (@svcId = 0 OR b.""SlotAvailabilityId"" IN (
+                      SELECT sa.""SlotAvailabilityId"" FROM public.""tblSlotAvailability"" sa
+                      WHERE sa.""ServiceId"" = @svcId))
+              AND (@status = 0 OR b.""BookingStatus"" = @status)"))
         {
-            totalBookings            = GetInt64(reader,   "TotalBookings");
-            pendingBookings          = GetInt64(reader,   "PendingBookings");
-            confirmedBookings        = GetInt64(reader,   "ConfirmedBookings");
-            cancelledBookings        = GetInt64(reader,   "CancelledBookings");
-            averageBookingsPerPeriod = GetDecimal(reader, "AverageBookingsPerPeriod");
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            P(cmd, "@svcId", svcId); P(cmd, "@status", status);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (await r.ReadAsync(ct))
+            {
+                totalBookings = I64(r, "TotalBookings"); pending    = I64(r, "PendingBookings");
+                confirmed     = I64(r, "ConfirmedBookings"); cancelled = I64(r, "CancelledBookings");
+                avg           = Dec(r, "AverageBookingsPerPeriod");
+            }
         }
 
-        var trends             = await ReadTrendPointsAsync(reader, cancellationToken);
-        var statusDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
-        var serviceDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
+        var trends = new List<AnalyticsTrendPointReadModel>();
+        await using (var cmd = Cmd(conn, TrendSql("b.\"BookingDateUtc\"", "public.\"tblBooking\" b",
+            "NOT COALESCE(b.\"IsDeleted\", FALSE) AND b.\"BookingDateUtc\" >= @df AND b.\"BookingDateUtc\" < @dt\n" +
+            "              AND (@svcId = 0 OR b.\"SlotAvailabilityId\" IN (\n" +
+            "                      SELECT sa.\"SlotAvailabilityId\" FROM public.\"tblSlotAvailability\" sa\n" +
+            "                      WHERE sa.\"ServiceId\" = @svcId))\n" +
+            "              AND (@status = 0 OR b.\"BookingStatus\" = @status)", "COUNT(*)::NUMERIC(18,2)")))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            P(cmd, "@svcId", svcId); P(cmd, "@status", status);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                trends.Add(new AnalyticsTrendPointReadModel(DO(r, "PeriodStartDate"), Str(r, "PeriodLabel"), Dec(r, "Value")));
+        }
 
-        await tx.CommitAsync(cancellationToken);
+        var statusDist = new List<AnalyticsBreakdownItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT CASE b.""BookingStatus""
+                       WHEN 1 THEN 'Pending' WHEN 2 THEN 'Confirmed'
+                       WHEN 3 THEN 'Cancelled' ELSE 'Unknown' END AS ""Label"",
+                   COUNT(*)::NUMERIC(18,2) AS ""Value""
+            FROM public.""tblBooking"" b
+            WHERE NOT COALESCE(b.""IsDeleted"", FALSE)
+              AND b.""BookingDateUtc"" >= @df AND b.""BookingDateUtc"" < @dt
+            GROUP BY b.""BookingStatus"" ORDER BY b.""BookingStatus"""))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) statusDist.Add(BD(r));
+        }
 
-        return new BookingAnalyticsReadModel(
-            totalBookings,
-            pendingBookings,
-            confirmedBookings,
-            cancelledBookings,
-            averageBookingsPerPeriod,
-            trends,
-            statusDistribution,
-            serviceDistribution);
+        var svcDist = new List<AnalyticsBreakdownItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT COALESCE(b.""ServiceNameSnapshot"", 'Unknown') AS ""Label"",
+                   COUNT(*)::NUMERIC(18,2) AS ""Value""
+            FROM public.""tblBooking"" b
+            WHERE NOT COALESCE(b.""IsDeleted"", FALSE)
+              AND b.""BookingDateUtc"" >= @df AND b.""BookingDateUtc"" < @dt
+            GROUP BY b.""ServiceNameSnapshot"" ORDER BY COUNT(*) DESC"))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) svcDist.Add(BD(r));
+        }
+
+        return new BookingAnalyticsReadModel(totalBookings, pending, confirmed, cancelled, avg,
+            trends, statusDist, svcDist);
     }
 
+    // =========================================================
+    // Revenue Analytics
+    // =========================================================
     public async Task<RevenueAnalyticsReadModel> GetRevenueAnalyticsAsync(
-        AnalyticsQueryFilter filter,
-        CancellationToken cancellationToken)
+        AnalyticsQueryFilter filter, CancellationToken ct)
     {
-        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
-        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
-        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetRevenueAnalytics", conn, tx);
+        var conn  = await OpenAsync(ct);
+        var df    = filter.DateFrom.ToDateTime(TimeOnly.MinValue);
+        var dt    = filter.DateTo.ToDateTime(TimeOnly.MinValue);
+        var svcId = filter.ServiceId ?? 0L;
+        var trend = NormaliseTrend(filter.TrendBy);
 
-        AddDateParameters(cmd, filter);
-        AddParameter(cmd, "@ServiceId", filter.ServiceId ?? 0L);
-        AddRefCursors(cmd, 4);
-
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        decimal totalRevenue = 0, paidRevenue = 0, outstandingRevenue = 0, averageInvoiceValue = 0;
+        decimal totalRevenue = 0, paidRevenue = 0, outstandingRevenue = 0, avgInvoice = 0;
         long invoiceCount = 0;
 
-        if (await reader.ReadAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            SELECT
+                COALESCE(SUM(ih.""GrandTotalAmount""), 0)::NUMERIC(18,2) AS ""TotalRevenue"",
+                COALESCE(SUM(ih.""PaidAmount""),       0)::NUMERIC(18,2) AS ""PaidRevenue"",
+                COALESCE(SUM(ih.""BalanceAmount""),    0)::NUMERIC(18,2) AS ""OutstandingRevenue"",
+                COUNT(*)::BIGINT                                          AS ""InvoiceCount"",
+                CASE WHEN COUNT(*) > 0
+                     THEN ROUND(SUM(ih.""GrandTotalAmount"") / COUNT(*), 2)
+                     ELSE 0 END::NUMERIC(18,2)                           AS ""AverageInvoiceValue""
+            FROM public.""tblInvoiceHeader"" ih
+            WHERE NOT COALESCE(ih.""IsDeleted"", FALSE)
+              AND ih.""InvoiceDateUtc"" >= @df AND ih.""InvoiceDateUtc"" < @dt
+              AND (@svcId = 0 OR EXISTS (
+                      SELECT 1 FROM public.""tblBooking"" b
+                      JOIN public.""tblServiceRequest""  sr ON b.""BookingId""         = sr.""BookingId""
+                      JOIN public.""tblJobCard""          jc ON sr.""ServiceRequestId"" = jc.""ServiceRequestId""
+                      JOIN public.""tblQuotationHeader""  qh ON jc.""JobCardId""        = qh.""JobCardId""
+                      WHERE qh.""QuotationHeaderId"" = ih.""QuotationHeaderId""
+                        AND b.""SlotAvailabilityId"" IN (
+                            SELECT sa.""SlotAvailabilityId"" FROM public.""tblSlotAvailability"" sa
+                            WHERE sa.""ServiceId"" = @svcId)))"))
         {
-            totalRevenue       = GetDecimal(reader, "TotalRevenue");
-            paidRevenue        = GetDecimal(reader, "PaidRevenue");
-            outstandingRevenue = GetDecimal(reader, "OutstandingRevenue");
-            invoiceCount       = GetInt64(reader,   "InvoiceCount");
-            averageInvoiceValue = GetDecimal(reader, "AverageInvoiceValue");
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@svcId", svcId);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (await r.ReadAsync(ct))
+            {
+                totalRevenue      = Dec(r, "TotalRevenue");
+                paidRevenue       = Dec(r, "PaidRevenue");
+                outstandingRevenue = Dec(r, "OutstandingRevenue");
+                invoiceCount      = I64(r, "InvoiceCount");
+                avgInvoice        = Dec(r, "AverageInvoiceValue");
+            }
         }
 
-        var trends                   = await ReadTrendPointsAsync(reader, cancellationToken);
-        var revenueByService         = await ReadBreakdownItemsAsync(reader, cancellationToken);
-        var revenueByCustomerSegment = await ReadBreakdownItemsAsync(reader, cancellationToken);
+        var trends = new List<AnalyticsTrendPointReadModel>();
+        await using (var cmd = Cmd(conn, TrendSql("ih.\"InvoiceDateUtc\"", "public.\"tblInvoiceHeader\" ih",
+            "NOT COALESCE(ih.\"IsDeleted\", FALSE) AND ih.\"InvoiceDateUtc\" >= @df AND ih.\"InvoiceDateUtc\" < @dt",
+            "COALESCE(SUM(ih.\"GrandTotalAmount\"), 0)::NUMERIC(18,2)")))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                trends.Add(new AnalyticsTrendPointReadModel(DO(r, "PeriodStartDate"), Str(r, "PeriodLabel"), Dec(r, "Value")));
+        }
 
-        await tx.CommitAsync(cancellationToken);
+        var byService = new List<AnalyticsBreakdownItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT COALESCE(b.""ServiceNameSnapshot"", 'Unknown') AS ""Label"",
+                   COALESCE(SUM(ih.""GrandTotalAmount""), 0)::NUMERIC(18,2) AS ""Value""
+            FROM public.""tblInvoiceHeader"" ih
+            JOIN public.""tblQuotationHeader"" qh ON ih.""QuotationHeaderId"" = qh.""QuotationHeaderId""
+            JOIN public.""tblJobCard""         jc ON qh.""JobCardId""         = jc.""JobCardId""
+            JOIN public.""tblServiceRequest""  sr ON jc.""ServiceRequestId""  = sr.""ServiceRequestId""
+            JOIN public.""tblBooking""         b  ON sr.""BookingId""         = b.""BookingId""
+            WHERE NOT COALESCE(ih.""IsDeleted"", FALSE)
+              AND ih.""InvoiceDateUtc"" >= @df AND ih.""InvoiceDateUtc"" < @dt
+            GROUP BY b.""ServiceNameSnapshot"" ORDER BY SUM(ih.""GrandTotalAmount"") DESC"))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) byService.Add(BD(r));
+        }
 
-        return new RevenueAnalyticsReadModel(
-            totalRevenue,
-            paidRevenue,
-            outstandingRevenue,
-            invoiceCount,
-            averageInvoiceValue,
-            trends,
-            revenueByService,
-            revenueByCustomerSegment);
+        var bySegment = new List<AnalyticsBreakdownItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT CASE WHEN EXISTS (
+                            SELECT 1 FROM public.""tblCustomerAMC"" amc
+                            WHERE amc.""CustomerId"" = ih.""CustomerId""
+                              AND NOT COALESCE(amc.""IsDeleted"", FALSE)
+                              AND amc.""CurrentStatus"" = 1)
+                        THEN 'AMC Customer' ELSE 'Standard Customer' END AS ""Label"",
+                   COALESCE(SUM(ih.""GrandTotalAmount""), 0)::NUMERIC(18,2) AS ""Value""
+            FROM public.""tblInvoiceHeader"" ih
+            WHERE NOT COALESCE(ih.""IsDeleted"", FALSE)
+              AND ih.""InvoiceDateUtc"" >= @df AND ih.""InvoiceDateUtc"" < @dt
+            GROUP BY 1 ORDER BY 2 DESC"))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) bySegment.Add(BD(r));
+        }
+
+        return new RevenueAnalyticsReadModel(totalRevenue, paidRevenue, outstandingRevenue,
+            invoiceCount, avgInvoice, trends, byService, bySegment);
     }
 
+    // =========================================================
+    // Technician Performance
+    // =========================================================
     public async Task<TechnicianPerformanceReadModel> GetTechnicianPerformanceAsync(
-        AnalyticsQueryFilter filter,
-        int? serviceRequestStatus,
-        CancellationToken cancellationToken)
+        AnalyticsQueryFilter filter, int? serviceRequestStatus, CancellationToken ct)
     {
-        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
-        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
-        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetTechnicianPerformance", conn, tx);
+        var conn   = await OpenAsync(ct);
+        var df     = filter.DateFrom.ToDateTime(TimeOnly.MinValue);
+        var dt     = filter.DateTo.ToDateTime(TimeOnly.MinValue);
+        var techId = filter.TechnicianId ?? 0L;
+        var status = serviceRequestStatus ?? 0;
 
-        AddDateParameters(cmd, filter);
-        AddParameter(cmd, "@TechnicianId", filter.TechnicianId ?? 0L);
-        AddParameter(cmd, "@Status",       serviceRequestStatus ?? 0);
-        AddRefCursors(cmd, 2);
+        long totalTech = 0, activeTech = 0, assigned = 0, completed = 0;
+        decimal avgHours = 0;
 
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        long totalTechnicians = 0, activeTechnicians = 0, totalAssignedJobs = 0, totalCompletedJobs = 0;
-        decimal averageCompletionHours = 0;
-
-        if (await reader.ReadAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            WITH asgn AS (
+                SELECT sra.""TechnicianId"",
+                       COUNT(*) AS jobs_assigned,
+                       SUM(CASE WHEN jc.""WorkCompletedDateUtc"" IS NOT NULL THEN 1 ELSE 0 END) AS jobs_completed,
+                       AVG(CASE WHEN jc.""WorkCompletedDateUtc"" IS NOT NULL
+                                     AND jc.""WorkStartedDateUtc"" IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (jc.""WorkCompletedDateUtc"" - jc.""WorkStartedDateUtc"")) / 3600.0
+                           END) AS avg_hours
+                FROM public.""tblServiceRequestAssignment"" sra
+                JOIN public.""tblServiceRequest"" sr ON sra.""ServiceRequestId"" = sr.""ServiceRequestId""
+                LEFT JOIN public.""tblJobCard""   jc ON sr.""ServiceRequestId""  = jc.""ServiceRequestId""
+                WHERE NOT COALESCE(sra.""IsDeleted"", FALSE)
+                  AND sra.""AssignedDateUtc"" >= @df AND sra.""AssignedDateUtc"" < @dt
+                  AND (@techId = 0 OR sra.""TechnicianId"" = @techId)
+                  AND (@status = 0 OR sr.""CurrentStatus"" = @status)
+                GROUP BY sra.""TechnicianId""
+            )
+            SELECT
+                COUNT(DISTINCT t.""TechnicianId"")::BIGINT                            AS ""TotalTechnicians"",
+                SUM(CASE WHEN t.""IsActive"" THEN 1 ELSE 0 END)::BIGINT              AS ""ActiveTechnicians"",
+                COALESCE(SUM(a.jobs_assigned),  0)::BIGINT                            AS ""TotalAssignedJobs"",
+                COALESCE(SUM(a.jobs_completed), 0)::BIGINT                            AS ""TotalCompletedJobs"",
+                COALESCE(ROUND(AVG(a.avg_hours)::NUMERIC, 2), 0)::NUMERIC(18,2)      AS ""AverageCompletionHours""
+            FROM public.""tblTechnician"" t
+            LEFT JOIN asgn a ON t.""TechnicianId"" = a.""TechnicianId""
+            WHERE NOT COALESCE(t.""IsDeleted"", FALSE)
+              AND (@techId = 0 OR t.""TechnicianId"" = @techId)"))
         {
-            totalTechnicians      = GetInt64(reader,   "TotalTechnicians");
-            activeTechnicians     = GetInt64(reader,   "ActiveTechnicians");
-            totalAssignedJobs     = GetInt64(reader,   "TotalAssignedJobs");
-            totalCompletedJobs    = GetInt64(reader,   "TotalCompletedJobs");
-            averageCompletionHours = GetDecimal(reader, "AverageCompletionHours");
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@techId", techId); P(cmd, "@status", status);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (await r.ReadAsync(ct))
+            {
+                totalTech  = I64(r, "TotalTechnicians"); activeTech = I64(r, "ActiveTechnicians");
+                assigned   = I64(r, "TotalAssignedJobs"); completed  = I64(r, "TotalCompletedJobs");
+                avgHours   = Dec(r, "AverageCompletionHours");
+            }
         }
 
         var technicians = new List<TechnicianPerformanceItemReadModel>();
-
-        if (await reader.NextResultAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            SELECT
+                t.""TechnicianId"", t.""TechnicianCode"", t.""TechnicianName"",
+                COUNT(sra.""ServiceRequestAssignmentId"")::BIGINT AS ""JobsAssigned"",
+                SUM(CASE WHEN jc.""WorkCompletedDateUtc"" IS NOT NULL THEN 1 ELSE 0 END)::BIGINT AS ""JobsCompleted"",
+                CASE WHEN COUNT(sra.""ServiceRequestAssignmentId"") > 0
+                     THEN ROUND(SUM(CASE WHEN jc.""WorkCompletedDateUtc"" IS NOT NULL THEN 1.0 ELSE 0 END) /
+                                COUNT(sra.""ServiceRequestAssignmentId"") * 100, 2)
+                     ELSE 0 END::NUMERIC(18,2) AS ""CompletionRatePercentage"",
+                COALESCE(ROUND(AVG(
+                    CASE WHEN jc.""WorkCompletedDateUtc"" IS NOT NULL AND jc.""WorkStartedDateUtc"" IS NOT NULL
+                         THEN EXTRACT(EPOCH FROM (jc.""WorkCompletedDateUtc"" - jc.""WorkStartedDateUtc"")) / 3600.0 END
+                )::NUMERIC, 2), 0)::NUMERIC(18,2) AS ""AverageCompletionHours"",
+                (SELECT COUNT(*) FROM public.""tblServiceRequestAssignment"" cw
+                 WHERE cw.""TechnicianId"" = t.""TechnicianId""
+                   AND cw.""IsActiveAssignment"" AND NOT COALESCE(cw.""IsDeleted"", FALSE))::BIGINT AS ""CurrentWorkload""
+            FROM public.""tblTechnician"" t
+            LEFT JOIN public.""tblServiceRequestAssignment"" sra
+                   ON t.""TechnicianId"" = sra.""TechnicianId""
+                  AND NOT COALESCE(sra.""IsDeleted"", FALSE)
+                  AND sra.""AssignedDateUtc"" >= @df AND sra.""AssignedDateUtc"" < @dt
+            LEFT JOIN public.""tblServiceRequest"" sr ON sra.""ServiceRequestId"" = sr.""ServiceRequestId""
+            LEFT JOIN public.""tblJobCard""         jc ON sr.""ServiceRequestId""  = jc.""ServiceRequestId""
+            WHERE NOT COALESCE(t.""IsDeleted"", FALSE)
+              AND (@techId = 0 OR t.""TechnicianId"" = @techId)
+              AND (@status = 0 OR sr.""CurrentStatus"" = @status OR sr.""CurrentStatus"" IS NULL)
+            GROUP BY t.""TechnicianId"", t.""TechnicianCode"", t.""TechnicianName""
+            ORDER BY ""JobsCompleted"" DESC"))
         {
-            while (await reader.ReadAsync(cancellationToken))
-            {
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@techId", techId); P(cmd, "@status", status);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
                 technicians.Add(new TechnicianPerformanceItemReadModel(
-                    GetInt64(reader,   "TechnicianId"),
-                    GetString(reader,  "TechnicianCode"),
-                    GetString(reader,  "TechnicianName"),
-                    GetInt64(reader,   "JobsAssigned"),
-                    GetInt64(reader,   "JobsCompleted"),
-                    GetDecimal(reader, "CompletionRatePercentage"),
-                    GetDecimal(reader, "AverageCompletionHours"),
-                    GetInt64(reader,   "CurrentWorkload")));
-            }
+                    I64(r, "TechnicianId"), Str(r, "TechnicianCode"), Str(r, "TechnicianName"),
+                    I64(r, "JobsAssigned"), I64(r, "JobsCompleted"),
+                    Dec(r, "CompletionRatePercentage"), Dec(r, "AverageCompletionHours"),
+                    I64(r, "CurrentWorkload")));
         }
 
-        await tx.CommitAsync(cancellationToken);
-
-        return new TechnicianPerformanceReadModel(
-            totalTechnicians,
-            activeTechnicians,
-            totalAssignedJobs,
-            totalCompletedJobs,
-            averageCompletionHours,
-            technicians);
+        return new TechnicianPerformanceReadModel(totalTech, activeTech, assigned, completed,
+            avgHours, technicians);
     }
 
+    // =========================================================
+    // Customer Analytics
+    // =========================================================
     public async Task<CustomerAnalyticsReadModel> GetCustomerAnalyticsAsync(
-        AnalyticsQueryFilter filter,
-        CancellationToken cancellationToken)
+        AnalyticsQueryFilter filter, CancellationToken ct)
     {
-        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
-        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
-        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetCustomerAnalytics", conn, tx);
+        var conn  = await OpenAsync(ct);
+        var df    = filter.DateFrom.ToDateTime(TimeOnly.MinValue);
+        var dt    = filter.DateTo.ToDateTime(TimeOnly.MinValue);
+        var trend = NormaliseTrend(filter.TrendBy);
 
-        AddDateParameters(cmd, filter);
-        AddRefCursors(cmd, 3);
+        long total = 0, newC = 0, returning = 0, repeat = 0, amc = 0, nonAmc = 0;
+        decimal repeatRate = 0;
 
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        long totalCustomers = 0, newCustomers = 0, returningCustomers = 0;
-        long repeatCustomers = 0, amcCustomers = 0, nonAmcCustomers = 0;
-        decimal repeatRatePercentage = 0;
-
-        if (await reader.ReadAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            WITH cust_stats AS (
+                SELECT c.""CustomerId"", c.""DateCreated"",
+                       COUNT(b.""BookingId"") AS booking_count,
+                       EXISTS (SELECT 1 FROM public.""tblCustomerAMC"" a
+                               WHERE a.""CustomerId"" = c.""CustomerId""
+                                 AND NOT COALESCE(a.""IsDeleted"", FALSE)
+                                 AND a.""CurrentStatus"" = 1) AS is_amc
+                FROM public.""tblCustomer"" c
+                LEFT JOIN public.""tblBooking"" b
+                       ON b.""CustomerId"" = c.""CustomerId"" AND NOT COALESCE(b.""IsDeleted"", FALSE)
+                WHERE NOT COALESCE(c.""IsDeleted"", FALSE)
+                GROUP BY c.""CustomerId"", c.""DateCreated""
+            )
+            SELECT
+                COUNT(*)::BIGINT AS ""TotalCustomers"",
+                SUM(CASE WHEN cs.""DateCreated"" >= @df AND cs.""DateCreated"" < @dt THEN 1 ELSE 0 END)::BIGINT AS ""NewCustomers"",
+                SUM(CASE WHEN cs.""DateCreated"" <  @df AND cs.booking_count > 0     THEN 1 ELSE 0 END)::BIGINT AS ""ReturningCustomers"",
+                SUM(CASE WHEN cs.booking_count > 1 THEN 1 ELSE 0 END)::BIGINT AS ""RepeatCustomers"",
+                SUM(CASE WHEN     cs.is_amc THEN 1 ELSE 0 END)::BIGINT AS ""AmcCustomers"",
+                SUM(CASE WHEN NOT cs.is_amc THEN 1 ELSE 0 END)::BIGINT AS ""NonAmcCustomers"",
+                CASE WHEN COUNT(*) > 0
+                     THEN ROUND(SUM(CASE WHEN cs.booking_count > 1 THEN 1.0 ELSE 0 END) / COUNT(*) * 100, 2)
+                     ELSE 0 END::NUMERIC(18,2) AS ""RepeatRatePercentage""
+            FROM cust_stats cs"))
         {
-            totalCustomers      = GetInt64(reader,   "TotalCustomers");
-            newCustomers        = GetInt64(reader,   "NewCustomers");
-            returningCustomers  = GetInt64(reader,   "ReturningCustomers");
-            repeatCustomers     = GetInt64(reader,   "RepeatCustomers");
-            amcCustomers        = GetInt64(reader,   "AmcCustomers");
-            nonAmcCustomers     = GetInt64(reader,   "NonAmcCustomers");
-            repeatRatePercentage = GetDecimal(reader, "RepeatRatePercentage");
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (await r.ReadAsync(ct))
+            {
+                total      = I64(r, "TotalCustomers"); newC      = I64(r, "NewCustomers");
+                returning  = I64(r, "ReturningCustomers"); repeat = I64(r, "RepeatCustomers");
+                amc        = I64(r, "AmcCustomers"); nonAmc     = I64(r, "NonAmcCustomers");
+                repeatRate = Dec(r, "RepeatRatePercentage");
+            }
         }
 
-        var segmentDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
+        var segmentDist = new List<AnalyticsBreakdownItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT CASE WHEN EXISTS (
+                            SELECT 1 FROM public.""tblCustomerAMC"" a
+                            WHERE a.""CustomerId"" = c.""CustomerId""
+                              AND NOT COALESCE(a.""IsDeleted"", FALSE) AND a.""CurrentStatus"" = 1)
+                        THEN 'AMC' ELSE 'Standard' END AS ""Label"",
+                   COUNT(*)::NUMERIC(18,2) AS ""Value""
+            FROM public.""tblCustomer"" c
+            WHERE NOT COALESCE(c.""IsDeleted"", FALSE)
+            GROUP BY 1 ORDER BY 2 DESC"))
+        {
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) segmentDist.Add(BD(r));
+        }
+
         var trends = new List<CustomerTrendPointReadModel>();
-
-        if (await reader.NextResultAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            SELECT
+                DATE_TRUNC(CASE @trend WHEN 'week' THEN 'week' WHEN 'month' THEN 'month' ELSE 'day' END,
+                           c.""DateCreated"")::DATE AS ""PeriodStartDate"",
+                CASE @trend
+                    WHEN 'week'  THEN TO_CHAR(DATE_TRUNC('week',  c.""DateCreated""), 'DD Mon')
+                    WHEN 'month' THEN TO_CHAR(DATE_TRUNC('month', c.""DateCreated""), 'Mon YYYY')
+                    ELSE              TO_CHAR(c.""DateCreated""::DATE, 'DD Mon')
+                END AS ""PeriodLabel"",
+                COUNT(CASE WHEN c.""DateCreated"" >= @df AND c.""DateCreated"" < @dt THEN 1 END)::BIGINT AS ""NewCustomers"",
+                COUNT(CASE WHEN c.""DateCreated"" < @df AND EXISTS (
+                               SELECT 1 FROM public.""tblBooking"" b
+                               WHERE b.""CustomerId"" = c.""CustomerId""
+                                 AND NOT COALESCE(b.""IsDeleted"", FALSE)
+                                 AND b.""BookingDateUtc"" >= @df AND b.""BookingDateUtc"" < @dt)
+                       THEN 1 END)::BIGINT AS ""ReturningCustomers""
+            FROM public.""tblCustomer"" c
+            WHERE NOT COALESCE(c.""IsDeleted"", FALSE)
+              AND c.""DateCreated"" >= @df AND c.""DateCreated"" < @dt
+            GROUP BY 1, 2 ORDER BY 1"))
         {
-            while (await reader.ReadAsync(cancellationToken))
-            {
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
                 trends.Add(new CustomerTrendPointReadModel(
-                    GetDateOnly(reader, "PeriodStartDate"),
-                    GetString(reader,  "PeriodLabel"),
-                    GetInt64(reader,   "NewCustomers"),
-                    GetInt64(reader,   "ReturningCustomers")));
-            }
+                    DO(r, "PeriodStartDate"), Str(r, "PeriodLabel"),
+                    I64(r, "NewCustomers"), I64(r, "ReturningCustomers")));
         }
 
-        await tx.CommitAsync(cancellationToken);
-
-        return new CustomerAnalyticsReadModel(
-            totalCustomers,
-            newCustomers,
-            returningCustomers,
-            repeatCustomers,
-            amcCustomers,
-            nonAmcCustomers,
-            repeatRatePercentage,
-            segmentDistribution,
-            trends);
+        return new CustomerAnalyticsReadModel(total, newC, returning, repeat, amc, nonAmc,
+            repeatRate, segmentDist, trends);
     }
 
+    // =========================================================
+    // Support Analytics
+    // =========================================================
     public async Task<SupportAnalyticsReadModel> GetSupportAnalyticsAsync(
-        AnalyticsQueryFilter filter,
-        int? supportTicketStatus,
-        CancellationToken cancellationToken)
+        AnalyticsQueryFilter filter, int? supportTicketStatus, CancellationToken ct)
     {
-        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
-        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
-        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetSupportAnalytics", conn, tx);
+        var conn   = await OpenAsync(ct);
+        var df     = filter.DateFrom.ToDateTime(TimeOnly.MinValue);
+        var dt     = filter.DateTo.ToDateTime(TimeOnly.MinValue);
+        var status = supportTicketStatus ?? 0;
+        var trend  = NormaliseTrend(filter.TrendBy);
 
-        AddDateParameters(cmd, filter);
-        AddParameter(cmd, "@Status", supportTicketStatus ?? 0);
-        AddRefCursors(cmd, 3);
+        long totalTickets = 0, openTickets = 0, resolved = 0, escalations = 0;
+        decimal avgResHours = 0;
 
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        long totalTickets = 0, openTickets = 0, resolvedTickets = 0, escalationCount = 0;
-        decimal averageResolutionHours = 0;
-
-        if (await reader.ReadAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            WITH resolution AS (
+                SELECT sh.""SupportTicketId"", MIN(sh.""StatusDateUtc"") AS resolved_at
+                FROM public.""tblSupportTicketStatusHistory"" sh
+                WHERE sh.""SupportTicketStatus"" = 6 AND NOT COALESCE(sh.""IsDeleted"", FALSE)
+                GROUP BY sh.""SupportTicketId""
+            )
+            SELECT
+                COUNT(*)::BIGINT AS ""TotalTickets"",
+                SUM(CASE WHEN st.""CurrentStatus"" IN (1,2,3,4,8) THEN 1 ELSE 0 END)::BIGINT AS ""OpenTickets"",
+                SUM(CASE WHEN st.""CurrentStatus"" IN (6,7)        THEN 1 ELSE 0 END)::BIGINT AS ""ResolvedTickets"",
+                SUM(CASE WHEN st.""CurrentStatus"" = 5             THEN 1 ELSE 0 END)::BIGINT AS ""EscalationCount"",
+                COALESCE(ROUND(AVG(CASE WHEN r.resolved_at IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (r.resolved_at - st.""DateCreated"")) / 3600.0
+                    END)::NUMERIC, 2), 0)::NUMERIC(18,2) AS ""AverageResolutionHours""
+            FROM public.""tblSupportTicket"" st
+            LEFT JOIN resolution r ON st.""SupportTicketId"" = r.""SupportTicketId""
+            WHERE NOT COALESCE(st.""IsDeleted"", FALSE)
+              AND st.""DateCreated"" >= @df AND st.""DateCreated"" < @dt
+              AND (@status = 0 OR st.""CurrentStatus"" = @status)"))
         {
-            totalTickets           = GetInt64(reader,   "TotalTickets");
-            openTickets            = GetInt64(reader,   "OpenTickets");
-            resolvedTickets        = GetInt64(reader,   "ResolvedTickets");
-            escalationCount        = GetInt64(reader,   "EscalationCount");
-            averageResolutionHours = GetDecimal(reader, "AverageResolutionHours");
-        }
-
-        var statusDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
-        var trends = new List<SupportResolutionTrendPointReadModel>();
-
-        if (await reader.NextResultAsync(cancellationToken))
-        {
-            while (await reader.ReadAsync(cancellationToken))
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@status", status);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (await r.ReadAsync(ct))
             {
-                trends.Add(new SupportResolutionTrendPointReadModel(
-                    GetDateOnly(reader, "PeriodStartDate"),
-                    GetString(reader,  "PeriodLabel"),
-                    GetInt64(reader,   "ResolvedTickets"),
-                    GetDecimal(reader, "AverageResolutionHours")));
+                totalTickets = I64(r, "TotalTickets"); openTickets = I64(r, "OpenTickets");
+                resolved     = I64(r, "ResolvedTickets"); escalations = I64(r, "EscalationCount");
+                avgResHours  = Dec(r, "AverageResolutionHours");
             }
         }
 
-        await tx.CommitAsync(cancellationToken);
+        var statusDist = new List<AnalyticsBreakdownItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT CASE st.""CurrentStatus""
+                       WHEN 1 THEN 'Open'               WHEN 2 THEN 'In Progress'
+                       WHEN 3 THEN 'Waiting For Customer' WHEN 4 THEN 'Customer Responded'
+                       WHEN 5 THEN 'Escalated'          WHEN 6 THEN 'Resolved'
+                       WHEN 7 THEN 'Closed'             WHEN 8 THEN 'Reopened'
+                       ELSE 'Unknown' END AS ""Label"",
+                   COUNT(*)::NUMERIC(18,2) AS ""Value""
+            FROM public.""tblSupportTicket"" st
+            WHERE NOT COALESCE(st.""IsDeleted"", FALSE)
+              AND st.""DateCreated"" >= @df AND st.""DateCreated"" < @dt
+            GROUP BY st.""CurrentStatus"" ORDER BY st.""CurrentStatus"""))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) statusDist.Add(BD(r));
+        }
 
-        return new SupportAnalyticsReadModel(
-            totalTickets,
-            openTickets,
-            resolvedTickets,
-            escalationCount,
-            averageResolutionHours,
-            statusDistribution,
-            trends);
+        var trends = new List<SupportResolutionTrendPointReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            WITH resolution AS (
+                SELECT sh.""SupportTicketId"", MIN(sh.""StatusDateUtc"") AS resolved_at
+                FROM public.""tblSupportTicketStatusHistory"" sh
+                WHERE sh.""SupportTicketStatus"" = 6 AND NOT COALESCE(sh.""IsDeleted"", FALSE)
+                GROUP BY sh.""SupportTicketId""
+            )
+            SELECT
+                DATE_TRUNC(CASE @trend WHEN 'week' THEN 'week' WHEN 'month' THEN 'month' ELSE 'day' END,
+                           st.""DateCreated"")::DATE AS ""PeriodStartDate"",
+                CASE @trend
+                    WHEN 'week'  THEN TO_CHAR(DATE_TRUNC('week',  st.""DateCreated""), 'DD Mon')
+                    WHEN 'month' THEN TO_CHAR(DATE_TRUNC('month', st.""DateCreated""), 'Mon YYYY')
+                    ELSE              TO_CHAR(st.""DateCreated""::DATE, 'DD Mon')
+                END AS ""PeriodLabel"",
+                SUM(CASE WHEN st.""CurrentStatus"" IN (6,7) THEN 1 ELSE 0 END)::BIGINT AS ""ResolvedTickets"",
+                COALESCE(ROUND(AVG(CASE WHEN r.resolved_at IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (r.resolved_at - st.""DateCreated"")) / 3600.0
+                    END)::NUMERIC, 2), 0)::NUMERIC(18,2) AS ""AverageResolutionHours""
+            FROM public.""tblSupportTicket"" st
+            LEFT JOIN resolution r ON st.""SupportTicketId"" = r.""SupportTicketId""
+            WHERE NOT COALESCE(st.""IsDeleted"", FALSE)
+              AND st.""DateCreated"" >= @df AND st.""DateCreated"" < @dt
+            GROUP BY 1, 2 ORDER BY 1"))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                trends.Add(new SupportResolutionTrendPointReadModel(
+                    DO(r, "PeriodStartDate"), Str(r, "PeriodLabel"),
+                    I64(r, "ResolvedTickets"), Dec(r, "AverageResolutionHours")));
+        }
+
+        return new SupportAnalyticsReadModel(totalTickets, openTickets, resolved, escalations,
+            avgResHours, statusDist, trends);
     }
 
+    // =========================================================
+    // Inventory Analytics
+    // =========================================================
     public async Task<InventoryAnalyticsReadModel> GetInventoryAnalyticsAsync(
-        AnalyticsQueryFilter filter,
-        CancellationToken cancellationToken)
+        AnalyticsQueryFilter filter, CancellationToken ct)
     {
-        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
-        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
-        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetInventoryAnalytics", conn, tx);
-
-        AddDateParameters(cmd, filter);
-        AddRefCursors(cmd, 3);
-
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        var conn  = await OpenAsync(ct);
+        var df    = filter.DateFrom.ToDateTime(TimeOnly.MinValue);
+        var dt    = filter.DateTo.ToDateTime(TimeOnly.MinValue);
+        var trend = NormaliseTrend(filter.TrendBy);
 
         long totalItems = 0, lowStockItems = 0;
-        decimal totalOnHandQuantity = 0, consumedQuantity = 0;
+        decimal totalOnHand = 0, consumed = 0;
 
-        if (await reader.ReadAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, @"
+            SELECT
+                (SELECT COUNT(DISTINCT i.""ItemId"") FROM public.""tblItem"" i
+                 WHERE NOT COALESCE(i.""IsDeleted"", FALSE))::BIGINT AS ""TotalItems"",
+                (SELECT COUNT(DISTINCT ws.""ItemId"")
+                 FROM public.""tblWarehouseStock"" ws
+                 JOIN public.""tblItem"" i ON ws.""ItemId"" = i.""ItemId""
+                 WHERE NOT COALESCE(ws.""IsDeleted"", FALSE) AND NOT COALESCE(i.""IsDeleted"", FALSE)
+                   AND ws.""QuantityOnHand"" <= i.""ReorderLevel"")::BIGINT AS ""LowStockItems"",
+                COALESCE((SELECT SUM(ws2.""QuantityOnHand"") FROM public.""tblWarehouseStock"" ws2
+                          WHERE NOT COALESCE(ws2.""IsDeleted"", FALSE)), 0)::NUMERIC(18,2) AS ""TotalOnHandQuantity"",
+                COALESCE((SELECT SUM(st.""Quantity"") FROM public.""tblStockTransaction"" st
+                          WHERE NOT COALESCE(st.""IsDeleted"", FALSE) AND st.""TransactionType"" = 6
+                            AND st.""TransactionDateUtc"" >= @df
+                            AND st.""TransactionDateUtc"" <  @dt), 0)::NUMERIC(18,2) AS ""ConsumedQuantity"""))
         {
-            totalItems          = GetInt64(reader,   "TotalItems");
-            lowStockItems       = GetInt64(reader,   "LowStockItems");
-            totalOnHandQuantity = GetDecimal(reader, "TotalOnHandQuantity");
-            consumedQuantity    = GetDecimal(reader, "ConsumedQuantity");
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (await r.ReadAsync(ct))
+            {
+                totalItems    = I64(r, "TotalItems");
+                lowStockItems = I64(r, "LowStockItems");
+                totalOnHand   = Dec(r, "TotalOnHandQuantity");
+                consumed      = Dec(r, "ConsumedQuantity");
+            }
         }
 
-        var lowStockSummaries = new List<LowStockInventoryItemReadModel>();
-
-        if (await reader.NextResultAsync(cancellationToken))
+        var lowStock = new List<LowStockInventoryItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT i.""ItemId"", i.""ItemCode"", i.""ItemName"",
+                   COALESCE(SUM(ws.""QuantityOnHand""), 0)::NUMERIC(18,2) AS ""QuantityOnHand"",
+                   i.""ReorderLevel""::NUMERIC(18,2) AS ""ReorderLevel"",
+                   GREATEST(0, i.""ReorderLevel"" - COALESCE(SUM(ws.""QuantityOnHand""), 0))::NUMERIC(18,2) AS ""ShortageQuantity""
+            FROM public.""tblItem"" i
+            LEFT JOIN public.""tblWarehouseStock"" ws
+                   ON ws.""ItemId"" = i.""ItemId"" AND NOT COALESCE(ws.""IsDeleted"", FALSE)
+            WHERE NOT COALESCE(i.""IsDeleted"", FALSE)
+            GROUP BY i.""ItemId"", i.""ItemCode"", i.""ItemName"", i.""ReorderLevel""
+            HAVING COALESCE(SUM(ws.""QuantityOnHand""), 0) <= i.""ReorderLevel""
+            ORDER BY ""ShortageQuantity"" DESC"))
         {
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                lowStockSummaries.Add(new LowStockInventoryItemReadModel(
-                    GetInt64(reader,   "ItemId"),
-                    GetString(reader,  "ItemCode"),
-                    GetString(reader,  "ItemName"),
-                    GetDecimal(reader, "QuantityOnHand"),
-                    GetDecimal(reader, "ReorderLevel"),
-                    GetDecimal(reader, "ShortageQuantity")));
-            }
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                lowStock.Add(new LowStockInventoryItemReadModel(
+                    I64(r, "ItemId"), Str(r, "ItemCode"), Str(r, "ItemName"),
+                    Dec(r, "QuantityOnHand"), Dec(r, "ReorderLevel"), Dec(r, "ShortageQuantity")));
         }
 
         var trends = new List<InventoryConsumptionTrendPointReadModel>();
-
-        if (await reader.NextResultAsync(cancellationToken))
+        await using (var cmd = Cmd(conn, TrendSql("st.\"TransactionDateUtc\"",
+            "public.\"tblStockTransaction\" st",
+            "NOT COALESCE(st.\"IsDeleted\", FALSE) AND st.\"TransactionType\" = 6\n" +
+            "              AND st.\"TransactionDateUtc\" >= @df AND st.\"TransactionDateUtc\" < @dt",
+            "COALESCE(SUM(st.\"Quantity\"), 0)::NUMERIC(18,2)", valueAlias: "QuantityConsumed")))
         {
-            while (await reader.ReadAsync(cancellationToken))
-            {
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
                 trends.Add(new InventoryConsumptionTrendPointReadModel(
-                    GetDateOnly(reader, "PeriodStartDate"),
-                    GetString(reader,  "PeriodLabel"),
-                    GetDecimal(reader, "QuantityConsumed")));
+                    DO(r, "PeriodStartDate"), Str(r, "PeriodLabel"), Dec(r, "QuantityConsumed")));
+        }
+
+        return new InventoryAnalyticsReadModel(totalItems, lowStockItems, totalOnHand, consumed,
+            lowStock, trends);
+    }
+
+    // =========================================================
+    // Date-Range Report
+    // =========================================================
+    public async Task<DateRangeReportReadModel> GetReportByDateRangeAsync(
+        AnalyticsQueryFilter filter, CancellationToken ct)
+    {
+        var conn  = await OpenAsync(ct);
+        var df    = filter.DateFrom.ToDateTime(TimeOnly.MinValue);
+        var dt    = filter.DateTo.ToDateTime(TimeOnly.MinValue);
+        var trend = NormaliseTrend(filter.TrendBy);
+
+        long totalBookings = 0, completedJobs = 0, supportTickets = 0, activeTech = 0, newCust = 0;
+        decimal totalRevenue = 0;
+
+        await using (var cmd = Cmd(conn, @"
+            SELECT
+                (SELECT COUNT(*)::BIGINT FROM public.""tblBooking"" b
+                 WHERE NOT COALESCE(b.""IsDeleted"", FALSE)
+                   AND b.""BookingDateUtc"" >= @df AND b.""BookingDateUtc"" < @dt) AS ""TotalBookings"",
+                COALESCE((SELECT SUM(ih.""GrandTotalAmount"") FROM public.""tblInvoiceHeader"" ih
+                          WHERE NOT COALESCE(ih.""IsDeleted"", FALSE)
+                            AND ih.""InvoiceDateUtc"" >= @df AND ih.""InvoiceDateUtc"" < @dt), 0)::NUMERIC(18,2) AS ""TotalRevenue"",
+                (SELECT COUNT(*)::BIGINT FROM public.""tblJobCard"" jc
+                 WHERE NOT COALESCE(jc.""IsDeleted"", FALSE)
+                   AND jc.""WorkCompletedDateUtc"" IS NOT NULL
+                   AND jc.""WorkCompletedDateUtc"" >= @df AND jc.""WorkCompletedDateUtc"" < @dt) AS ""CompletedJobs"",
+                (SELECT COUNT(*)::BIGINT FROM public.""tblSupportTicket"" st
+                 WHERE NOT COALESCE(st.""IsDeleted"", FALSE)
+                   AND st.""DateCreated"" >= @df AND st.""DateCreated"" < @dt) AS ""TotalSupportTickets"",
+                (SELECT COUNT(*)::BIGINT FROM public.""tblTechnician"" t
+                 WHERE NOT COALESCE(t.""IsDeleted"", FALSE) AND t.""IsActive"") AS ""ActiveTechnicians"",
+                (SELECT COUNT(*)::BIGINT FROM public.""tblCustomer"" c
+                 WHERE NOT COALESCE(c.""IsDeleted"", FALSE)
+                   AND c.""DateCreated"" >= @df AND c.""DateCreated"" < @dt) AS ""NewCustomers"""))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (await r.ReadAsync(ct))
+            {
+                totalBookings = I64(r, "TotalBookings"); totalRevenue = Dec(r, "TotalRevenue");
+                completedJobs = I64(r, "CompletedJobs"); supportTickets = I64(r, "TotalSupportTickets");
+                activeTech    = I64(r, "ActiveTechnicians"); newCust = I64(r, "NewCustomers");
             }
         }
 
-        await tx.CommitAsync(cancellationToken);
-
-        return new InventoryAnalyticsReadModel(
-            totalItems,
-            lowStockItems,
-            totalOnHandQuantity,
-            consumedQuantity,
-            lowStockSummaries,
-            trends);
-    }
-
-    public async Task<DateRangeReportReadModel> GetReportByDateRangeAsync(
-        AnalyticsQueryFilter filter,
-        CancellationToken cancellationToken)
-    {
-        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
-        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
-        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetReportByDateRange", conn, tx);
-
-        AddDateParameters(cmd, filter);
-        AddRefCursors(cmd, 4);
-
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        long totalBookings = 0, completedJobs = 0, totalSupportTickets = 0;
-        long activeTechnicians = 0, newCustomers = 0;
-        decimal totalRevenue = 0;
-
-        if (await reader.ReadAsync(cancellationToken))
+        var bookingTrends = new List<AnalyticsTrendPointReadModel>();
+        await using (var cmd = Cmd(conn, TrendSql("b.\"BookingDateUtc\"", "public.\"tblBooking\" b",
+            "NOT COALESCE(b.\"IsDeleted\", FALSE) AND b.\"BookingDateUtc\" >= @df AND b.\"BookingDateUtc\" < @dt",
+            "COUNT(*)::NUMERIC(18,2)")))
         {
-            totalBookings        = GetInt64(reader,   "TotalBookings");
-            totalRevenue         = GetDecimal(reader, "TotalRevenue");
-            completedJobs        = GetInt64(reader,   "CompletedJobs");
-            totalSupportTickets  = GetInt64(reader,   "TotalSupportTickets");
-            activeTechnicians    = GetInt64(reader,   "ActiveTechnicians");
-            newCustomers         = GetInt64(reader,   "NewCustomers");
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                bookingTrends.Add(new AnalyticsTrendPointReadModel(DO(r, "PeriodStartDate"), Str(r, "PeriodLabel"), Dec(r, "Value")));
         }
 
-        var bookingTrends            = await ReadTrendPointsAsync(reader, cancellationToken);
-        var revenueTrends            = await ReadTrendPointsAsync(reader, cancellationToken);
-        var supportStatusDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
+        var revenueTrends = new List<AnalyticsTrendPointReadModel>();
+        await using (var cmd = Cmd(conn, TrendSql("ih.\"InvoiceDateUtc\"", "public.\"tblInvoiceHeader\" ih",
+            "NOT COALESCE(ih.\"IsDeleted\", FALSE) AND ih.\"InvoiceDateUtc\" >= @df AND ih.\"InvoiceDateUtc\" < @dt",
+            "COALESCE(SUM(ih.\"GrandTotalAmount\"), 0)::NUMERIC(18,2)")))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct))
+                revenueTrends.Add(new AnalyticsTrendPointReadModel(DO(r, "PeriodStartDate"), Str(r, "PeriodLabel"), Dec(r, "Value")));
+        }
 
-        await tx.CommitAsync(cancellationToken);
+        var supportDist = new List<AnalyticsBreakdownItemReadModel>();
+        await using (var cmd = Cmd(conn, @"
+            SELECT CASE st.""CurrentStatus""
+                       WHEN 1 THEN 'Open'               WHEN 2 THEN 'In Progress'
+                       WHEN 3 THEN 'Waiting For Customer' WHEN 4 THEN 'Customer Responded'
+                       WHEN 5 THEN 'Escalated'          WHEN 6 THEN 'Resolved'
+                       WHEN 7 THEN 'Closed'             WHEN 8 THEN 'Reopened'
+                       ELSE 'Unknown' END AS ""Label"",
+                   COUNT(*)::NUMERIC(18,2) AS ""Value""
+            FROM public.""tblSupportTicket"" st
+            WHERE NOT COALESCE(st.""IsDeleted"", FALSE)
+              AND st.""DateCreated"" >= @df AND st.""DateCreated"" < @dt
+            GROUP BY st.""CurrentStatus"" ORDER BY st.""CurrentStatus"""))
+        {
+            P(cmd, "@df", df); P(cmd, "@dt", dt);
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            while (await r.ReadAsync(ct)) supportDist.Add(BD(r));
+        }
 
-        return new DateRangeReportReadModel(
-            filter.DateFrom,
-            filter.DateTo,
-            totalBookings,
-            totalRevenue,
-            completedJobs,
-            totalSupportTickets,
-            activeTechnicians,
-            newCustomers,
-            bookingTrends,
-            revenueTrends,
-            supportStatusDistribution);
+        return new DateRangeReportReadModel(filter.DateFrom, filter.DateTo,
+            totalBookings, totalRevenue, completedJobs, supportTickets, activeTech, newCust,
+            bookingTrends, revenueTrends, supportDist);
     }
 
-    // ----------------------------------------------------------
+    // =========================================================
     // Infrastructure helpers
-    // ----------------------------------------------------------
+    // =========================================================
 
-    private async Task<NpgsqlConnection> OpenNpgsqlConnectionAsync(CancellationToken cancellationToken)
+    private async Task<DbConnection> OpenAsync(CancellationToken ct)
     {
-        var conn = (NpgsqlConnection)_dbContext.Database.GetDbConnection();
+        var conn = _dbContext.Database.GetDbConnection();
         if (conn.State != ConnectionState.Open)
-            await conn.OpenAsync(cancellationToken);
+            await conn.OpenAsync(ct);
         return conn;
     }
 
-    private static NpgsqlCommand BuildAnalyticsCommand(
-        string procedureName,
-        NpgsqlConnection conn,
-        NpgsqlTransaction tx)
+    private static DbCommand Cmd(DbConnection conn, string sql)
     {
-        var cmd = new NpgsqlCommand(procedureName, conn, tx);
-        cmd.CommandType = CommandType.StoredProcedure;
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
         return cmd;
     }
 
-    // Adds INOUT REFCURSOR parameters (ref1, ref2, …) so that Npgsql
-    // automatically fetches each cursor as a separate result set.
-    private static void AddRefCursors(NpgsqlCommand cmd, int count)
+    private static void P(DbCommand cmd, string name, object? value)
     {
-        for (var i = 1; i <= count; i++)
-        {
-            cmd.Parameters.Add(new NpgsqlParameter
-            {
-                ParameterName = $"ref{i}",
-                NpgsqlDbType  = NpgsqlDbType.Refcursor,
-                Direction     = ParameterDirection.InputOutput,
-                Value         = $"cursor_{i}_{Guid.NewGuid():N}"
-            });
-        }
+        var p = cmd.CreateParameter();
+        p.ParameterName = name;
+        p.Value = value ?? DBNull.Value;
+        cmd.Parameters.Add(p);
     }
 
-    private async Task<DbCommand> CreateStoredProcedureCommandAsync(
-        string procedureName,
-        CancellationToken cancellationToken)
+    private static string NormaliseTrend(string? t) =>
+        t is "week" or "month" ? t : "day";
+
+    // Builds a standard period-trend SELECT. valueAlias defaults to "Value".
+    private static string TrendSql(string dateCol, string fromClause, string whereClause,
+        string valueExpr, string valueAlias = "Value") =>
+        $@"
+        SELECT
+            DATE_TRUNC(CASE @trend WHEN 'week' THEN 'week' WHEN 'month' THEN 'month' ELSE 'day' END,
+                       {dateCol})::DATE AS ""PeriodStartDate"",
+            CASE @trend
+                WHEN 'week'  THEN TO_CHAR(DATE_TRUNC('week',  {dateCol}), 'DD Mon')
+                WHEN 'month' THEN TO_CHAR(DATE_TRUNC('month', {dateCol}), 'Mon YYYY')
+                ELSE              TO_CHAR({dateCol}::DATE, 'DD Mon')
+            END AS ""PeriodLabel"",
+            {valueExpr} AS ""{valueAlias}""
+        FROM {fromClause}
+        WHERE {whereClause}
+        GROUP BY 1, 2 ORDER BY 1";
+
+    // Reads a standard Label/Value breakdown row.
+    private static AnalyticsBreakdownItemReadModel BD(DbDataReader r) =>
+        new(Str(r, "Label"), Dec(r, "Value"));
+
+    private static long I64(DbDataReader r, string col)
     {
-        var connection = _dbContext.Database.GetDbConnection();
-        if (connection.State != ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
-
-        var command = connection.CreateCommand();
-        command.CommandText = procedureName;
-        command.CommandType = CommandType.StoredProcedure;
-        return command;
-    }
-
-    private static async Task<IReadOnlyCollection<AnalyticsTrendPointReadModel>> ReadTrendPointsAsync(
-        DbDataReader reader,
-        CancellationToken cancellationToken)
-    {
-        var items = new List<AnalyticsTrendPointReadModel>();
-
-        if (!await reader.NextResultAsync(cancellationToken))
-            return items;
-
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            items.Add(new AnalyticsTrendPointReadModel(
-                GetDateOnly(reader, "PeriodStartDate"),
-                GetString(reader,  "PeriodLabel"),
-                GetDecimal(reader, "Value")));
-        }
-
-        return items;
-    }
-
-    private static async Task<IReadOnlyCollection<AnalyticsBreakdownItemReadModel>> ReadBreakdownItemsAsync(
-        DbDataReader reader,
-        CancellationToken cancellationToken)
-    {
-        var items = new List<AnalyticsBreakdownItemReadModel>();
-
-        if (!await reader.NextResultAsync(cancellationToken))
-            return items;
-
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            items.Add(new AnalyticsBreakdownItemReadModel(
-                GetString(reader,  "Label"),
-                GetDecimal(reader, "Value")));
-        }
-
-        return items;
-    }
-
-    private static void AddDateParameters(DbCommand command, AnalyticsQueryFilter filter)
-    {
-        AddParameter(command, "@DateFrom", filter.DateFrom.ToDateTime(TimeOnly.MinValue));
-        AddParameter(command, "@DateTo",   filter.DateTo.ToDateTime(TimeOnly.MinValue));
-        AddParameter(command, "@TrendBy",  filter.TrendBy);
-    }
-
-    private static void AddParameter(DbCommand command, string name, object? value)
-    {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.Value = value ?? DBNull.Value;
-        command.Parameters.Add(parameter);
-    }
-
-    private static long GetInt64(DbDataReader reader, string columnName)
-    {
-        var ordinal = reader.GetOrdinal(columnName);
-        if (reader.IsDBNull(ordinal)) return 0;
-        var value = reader.GetValue(ordinal);
-        return value switch
+        var ord = r.GetOrdinal(col);
+        if (r.IsDBNull(ord)) return 0;
+        return r.GetValue(ord) switch
         {
             long    l => l,
             int     i => i,
             short   s => s,
             decimal d => (long)d,
-            _         => Convert.ToInt64(value)
+            var v     => Convert.ToInt64(v)
         };
     }
 
-    private static decimal GetDecimal(DbDataReader reader, string columnName)
+    private static decimal Dec(DbDataReader r, string col)
     {
-        var ordinal = reader.GetOrdinal(columnName);
-        if (reader.IsDBNull(ordinal)) return 0;
-        var value = reader.GetValue(ordinal);
-        return value switch
+        var ord = r.GetOrdinal(col);
+        if (r.IsDBNull(ord)) return 0;
+        return r.GetValue(ord) switch
         {
             decimal d => d,
             double  d => Convert.ToDecimal(d),
             float   f => Convert.ToDecimal(f),
             long    l => l,
             int     i => i,
-            _         => Convert.ToDecimal(value)
+            var v     => Convert.ToDecimal(v)
         };
     }
 
-    private static string GetString(DbDataReader reader, string columnName)
+    private static string Str(DbDataReader r, string col)
     {
-        var ordinal = reader.GetOrdinal(columnName);
-        return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
+        var ord = r.GetOrdinal(col);
+        return r.IsDBNull(ord) ? string.Empty : r.GetString(ord);
     }
 
-    private static DateOnly GetDateOnly(DbDataReader reader, string columnName)
+    private static DateOnly DO(DbDataReader r, string col)
     {
-        var ordinal = reader.GetOrdinal(columnName);
-        if (reader.IsDBNull(ordinal)) return DateOnly.MinValue;
-        var value = reader.GetValue(ordinal);
-        return value switch
+        var ord = r.GetOrdinal(col);
+        if (r.IsDBNull(ord)) return DateOnly.MinValue;
+        return r.GetValue(ord) switch
         {
             DateOnly  d => d,
             DateTime  d => DateOnly.FromDateTime(d),
-            _           => DateOnly.FromDateTime(Convert.ToDateTime(value))
+            var v       => DateOnly.FromDateTime(Convert.ToDateTime(v))
         };
     }
 }
