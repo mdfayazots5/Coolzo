@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -16,7 +16,7 @@ public sealed class AmcPlanConfiguration : IEntityTypeConfiguration<AmcPlan>
         builder.Property(entity => entity.PlanDescription).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.DurationInMonths);
         builder.Property(entity => entity.VisitCount);
-        builder.Property(entity => entity.PriceAmount).HasColumnType("money");
+        builder.Property(entity => entity.PriceAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.IsActive).HasDefaultValue(true);
         builder.Property(entity => entity.TermsAndConditions).HasMaxLength(512).HasDefaultValue(string.Empty);
 

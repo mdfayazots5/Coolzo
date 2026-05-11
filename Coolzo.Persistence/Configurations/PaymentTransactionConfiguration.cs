@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -18,7 +18,7 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
         builder.Property(entity => entity.GatewayTransactionId).HasMaxLength(128).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.GatewaySignature).HasMaxLength(256).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.WebhookReference).HasMaxLength(128).HasDefaultValue(string.Empty);
-        builder.Property(entity => entity.PaidAmount).HasColumnType("money");
+        builder.Property(entity => entity.PaidAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.PaymentDateUtc);
         builder.Property(entity => entity.TransactionRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
 

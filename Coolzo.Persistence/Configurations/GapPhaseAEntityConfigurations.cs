@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -171,7 +171,7 @@ public sealed class SiteSurveyReportConfiguration : IEntityTypeConfiguration<Sit
         builder.Property(entity => entity.SiteConditionSummary).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.SafetyRiskNotes).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.RecommendedAction).HasMaxLength(512).HasDefaultValue(string.Empty);
-        builder.Property(entity => entity.EstimatedMaterialCost).HasColumnType("money");
+        builder.Property(entity => entity.EstimatedMaterialCost).HasColumnType("numeric(18,2)");
         builder.HasOne(entity => entity.InstallationOrder)
             .WithMany(order => order.SiteSurveyReports)
             .HasForeignKey(entity => entity.InstallationOrderId)
@@ -225,8 +225,8 @@ public sealed class CancellationRecordConfiguration : IEntityTypeConfiguration<C
         builder.Property(entity => entity.CancellationSource).HasMaxLength(64).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.CancellationReasonCode).HasMaxLength(64).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.CancellationReasonText).HasMaxLength(512).HasDefaultValue(string.Empty);
-        builder.Property(entity => entity.CancellationFeeAmount).HasColumnType("money");
-        builder.Property(entity => entity.RefundEligibleAmount).HasColumnType("money");
+        builder.Property(entity => entity.CancellationFeeAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.RefundEligibleAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.RequestedByRole).HasMaxLength(64).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.ApprovalRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.HasOne(entity => entity.Booking)
@@ -273,10 +273,10 @@ public sealed class RefundRequestConfiguration : IEntityTypeConfiguration<Refund
         builder.Property(entity => entity.RefundStatus).HasConversion<int>();
         builder.Property(entity => entity.RefundRequestNo).HasMaxLength(32).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.RefundMethod).HasConversion<int>();
-        builder.Property(entity => entity.RefundAmount).HasColumnType("money");
-        builder.Property(entity => entity.RequestedAmount).HasColumnType("money");
-        builder.Property(entity => entity.ApprovedAmount).HasColumnType("money");
-        builder.Property(entity => entity.MaxAllowedAmount).HasColumnType("money");
+        builder.Property(entity => entity.RefundAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.RequestedAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.ApprovedAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.MaxAllowedAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.RefundReason).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.ApprovalRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.HasOne(entity => entity.CancellationRecord)
@@ -468,7 +468,7 @@ public sealed class TechnicianEarningConfiguration : IEntityTypeConfiguration<Te
         builder.HasKey(entity => entity.TechnicianEarningId).HasName("PK_tblTechnicianEarnings_TechnicianEarningId");
         builder.Property(entity => entity.TechnicianEarningId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.EarningType).HasMaxLength(64).IsRequired();
-        builder.Property(entity => entity.EarningAmount).HasColumnType("money");
+        builder.Property(entity => entity.EarningAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.EarningStatus).HasConversion<int>();
         builder.HasIndex(entity => new { entity.TechnicianId, entity.CalculatedDateUtc }).HasDatabaseName("IDX_tblTechnicianEarnings_TechnicianId_CalculatedDateUtc");
         builder.ConfigureAuditColumns();
@@ -522,7 +522,7 @@ public sealed class PaymentWebhookAttemptConfiguration : IEntityTypeConfiguratio
         builder.Property(entity => entity.GatewayTransactionId).HasMaxLength(128).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.WebhookReference).HasMaxLength(128).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.SignatureHash).HasMaxLength(256).HasDefaultValue(string.Empty);
-        builder.Property(entity => entity.PaidAmount).HasColumnType("money");
+        builder.Property(entity => entity.PaidAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.PayloadSnapshot).HasMaxLength(4000).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.AttemptStatus).HasConversion<int>();
         builder.Property(entity => entity.FailureReason).HasMaxLength(512).HasDefaultValue(string.Empty);

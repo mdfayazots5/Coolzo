@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -63,8 +63,8 @@ public sealed class PromotionalOfferConfiguration : IEntityTypeConfiguration<Pro
         builder.Property(entity => entity.Title).HasMaxLength(160).IsRequired();
         builder.Property(entity => entity.Description).HasMaxLength(1000).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.DiscountType).HasMaxLength(32).HasDefaultValue("fixed");
-        builder.Property(entity => entity.DiscountValue).HasColumnType("money");
-        builder.Property(entity => entity.MinimumOrderValue).HasColumnType("money");
+        builder.Property(entity => entity.DiscountValue).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.MinimumOrderValue).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.ExpiryDate).HasColumnType("date");
         builder.Property(entity => entity.Category).HasMaxLength(128).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.IsActive).HasDefaultValue(true);
@@ -82,7 +82,7 @@ public sealed class CustomerReferralConfiguration : IEntityTypeConfiguration<Cus
         builder.Property(entity => entity.CustomerReferralId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.ReferralName).HasMaxLength(160).IsRequired();
         builder.Property(entity => entity.ReferralStatus).HasMaxLength(32).HasDefaultValue("Pending");
-        builder.Property(entity => entity.RewardAmount).HasColumnType("money");
+        builder.Property(entity => entity.RewardAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.ReferralDate).HasColumnType("date");
         builder.HasOne(entity => entity.Customer)
             .WithMany()

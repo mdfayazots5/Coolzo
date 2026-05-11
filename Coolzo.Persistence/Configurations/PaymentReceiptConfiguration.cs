@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -14,8 +14,8 @@ public sealed class PaymentReceiptConfiguration : IEntityTypeConfiguration<Payme
         builder.Property(entity => entity.PaymentReceiptId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.ReceiptNumber).HasMaxLength(64).IsRequired();
         builder.Property(entity => entity.ReceiptDateUtc);
-        builder.Property(entity => entity.ReceivedAmount).HasColumnType("money");
-        builder.Property(entity => entity.BalanceAmount).HasColumnType("money");
+        builder.Property(entity => entity.ReceivedAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.BalanceAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.ReceiptRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
 
         builder.HasOne(entity => entity.InvoiceHeader)

@@ -5,6 +5,8 @@ using Coolzo.Application.Common.Models;
 using Coolzo.Domain.Entities;
 using Coolzo.Persistence.Context;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace Coolzo.Persistence.Repositories;
 
@@ -19,7 +21,7 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
 
     public async Task<DashboardSummaryReadModel> GetDashboardSummaryAsync(CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetDashboardSummary", cancellationToken);
+        await using var command = await CreateStoredProcedureCommandAsync("public.uspGetDashboardSummary", cancellationToken);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
         long totalBookings = 0;
@@ -54,31 +56,34 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         int? bookingStatus,
         CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetBookingAnalytics", cancellationToken);
-        AddDateParameters(command, filter);
-        AddParameter(command, "@ServiceId", filter.ServiceId ?? 0L);
-        AddParameter(command, "@Status", bookingStatus ?? 0);
+        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
+        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
+        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetBookingAnalytics", conn, tx);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        AddDateParameters(cmd, filter);
+        AddParameter(cmd, "@ServiceId", filter.ServiceId ?? 0L);
+        AddParameter(cmd, "@Status",    bookingStatus ?? 0);
+        AddRefCursors(cmd, 4);
 
-        long totalBookings = 0;
-        long pendingBookings = 0;
-        long confirmedBookings = 0;
-        long cancelledBookings = 0;
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        long totalBookings = 0, pendingBookings = 0, confirmedBookings = 0, cancelledBookings = 0;
         decimal averageBookingsPerPeriod = 0;
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            totalBookings = GetInt64(reader, "TotalBookings");
-            pendingBookings = GetInt64(reader, "PendingBookings");
-            confirmedBookings = GetInt64(reader, "ConfirmedBookings");
-            cancelledBookings = GetInt64(reader, "CancelledBookings");
+            totalBookings            = GetInt64(reader,   "TotalBookings");
+            pendingBookings          = GetInt64(reader,   "PendingBookings");
+            confirmedBookings        = GetInt64(reader,   "ConfirmedBookings");
+            cancelledBookings        = GetInt64(reader,   "CancelledBookings");
             averageBookingsPerPeriod = GetDecimal(reader, "AverageBookingsPerPeriod");
         }
 
-        var trends = await ReadTrendPointsAsync(reader, cancellationToken);
+        var trends             = await ReadTrendPointsAsync(reader, cancellationToken);
         var statusDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
         var serviceDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
+
+        await tx.CommitAsync(cancellationToken);
 
         return new BookingAnalyticsReadModel(
             totalBookings,
@@ -95,30 +100,33 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         AnalyticsQueryFilter filter,
         CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetRevenueAnalytics", cancellationToken);
-        AddDateParameters(command, filter);
-        AddParameter(command, "@ServiceId", filter.ServiceId ?? 0L);
+        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
+        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
+        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetRevenueAnalytics", conn, tx);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        AddDateParameters(cmd, filter);
+        AddParameter(cmd, "@ServiceId", filter.ServiceId ?? 0L);
+        AddRefCursors(cmd, 4);
 
-        decimal totalRevenue = 0;
-        decimal paidRevenue = 0;
-        decimal outstandingRevenue = 0;
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        decimal totalRevenue = 0, paidRevenue = 0, outstandingRevenue = 0, averageInvoiceValue = 0;
         long invoiceCount = 0;
-        decimal averageInvoiceValue = 0;
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            totalRevenue = GetDecimal(reader, "TotalRevenue");
-            paidRevenue = GetDecimal(reader, "PaidRevenue");
+            totalRevenue       = GetDecimal(reader, "TotalRevenue");
+            paidRevenue        = GetDecimal(reader, "PaidRevenue");
             outstandingRevenue = GetDecimal(reader, "OutstandingRevenue");
-            invoiceCount = GetInt64(reader, "InvoiceCount");
+            invoiceCount       = GetInt64(reader,   "InvoiceCount");
             averageInvoiceValue = GetDecimal(reader, "AverageInvoiceValue");
         }
 
-        var trends = await ReadTrendPointsAsync(reader, cancellationToken);
-        var revenueByService = await ReadBreakdownItemsAsync(reader, cancellationToken);
+        var trends                   = await ReadTrendPointsAsync(reader, cancellationToken);
+        var revenueByService         = await ReadBreakdownItemsAsync(reader, cancellationToken);
         var revenueByCustomerSegment = await ReadBreakdownItemsAsync(reader, cancellationToken);
+
+        await tx.CommitAsync(cancellationToken);
 
         return new RevenueAnalyticsReadModel(
             totalRevenue,
@@ -136,25 +144,26 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         int? serviceRequestStatus,
         CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetTechnicianPerformance", cancellationToken);
-        AddDateParameters(command, filter);
-        AddParameter(command, "@TechnicianId", filter.TechnicianId ?? 0L);
-        AddParameter(command, "@Status", serviceRequestStatus ?? 0);
+        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
+        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
+        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetTechnicianPerformance", conn, tx);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        AddDateParameters(cmd, filter);
+        AddParameter(cmd, "@TechnicianId", filter.TechnicianId ?? 0L);
+        AddParameter(cmd, "@Status",       serviceRequestStatus ?? 0);
+        AddRefCursors(cmd, 2);
 
-        long totalTechnicians = 0;
-        long activeTechnicians = 0;
-        long totalAssignedJobs = 0;
-        long totalCompletedJobs = 0;
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        long totalTechnicians = 0, activeTechnicians = 0, totalAssignedJobs = 0, totalCompletedJobs = 0;
         decimal averageCompletionHours = 0;
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            totalTechnicians = GetInt64(reader, "TotalTechnicians");
-            activeTechnicians = GetInt64(reader, "ActiveTechnicians");
-            totalAssignedJobs = GetInt64(reader, "TotalAssignedJobs");
-            totalCompletedJobs = GetInt64(reader, "TotalCompletedJobs");
+            totalTechnicians      = GetInt64(reader,   "TotalTechnicians");
+            activeTechnicians     = GetInt64(reader,   "ActiveTechnicians");
+            totalAssignedJobs     = GetInt64(reader,   "TotalAssignedJobs");
+            totalCompletedJobs    = GetInt64(reader,   "TotalCompletedJobs");
             averageCompletionHours = GetDecimal(reader, "AverageCompletionHours");
         }
 
@@ -165,16 +174,18 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             while (await reader.ReadAsync(cancellationToken))
             {
                 technicians.Add(new TechnicianPerformanceItemReadModel(
-                    GetInt64(reader, "TechnicianId"),
-                    GetString(reader, "TechnicianCode"),
-                    GetString(reader, "TechnicianName"),
-                    GetInt64(reader, "JobsAssigned"),
-                    GetInt64(reader, "JobsCompleted"),
+                    GetInt64(reader,   "TechnicianId"),
+                    GetString(reader,  "TechnicianCode"),
+                    GetString(reader,  "TechnicianName"),
+                    GetInt64(reader,   "JobsAssigned"),
+                    GetInt64(reader,   "JobsCompleted"),
                     GetDecimal(reader, "CompletionRatePercentage"),
                     GetDecimal(reader, "AverageCompletionHours"),
-                    GetInt64(reader, "CurrentWorkload")));
+                    GetInt64(reader,   "CurrentWorkload")));
             }
         }
+
+        await tx.CommitAsync(cancellationToken);
 
         return new TechnicianPerformanceReadModel(
             totalTechnicians,
@@ -189,27 +200,27 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         AnalyticsQueryFilter filter,
         CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetCustomerAnalytics", cancellationToken);
-        AddDateParameters(command, filter);
+        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
+        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
+        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetCustomerAnalytics", conn, tx);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        AddDateParameters(cmd, filter);
+        AddRefCursors(cmd, 3);
 
-        long totalCustomers = 0;
-        long newCustomers = 0;
-        long returningCustomers = 0;
-        long repeatCustomers = 0;
-        long amcCustomers = 0;
-        long nonAmcCustomers = 0;
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        long totalCustomers = 0, newCustomers = 0, returningCustomers = 0;
+        long repeatCustomers = 0, amcCustomers = 0, nonAmcCustomers = 0;
         decimal repeatRatePercentage = 0;
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            totalCustomers = GetInt64(reader, "TotalCustomers");
-            newCustomers = GetInt64(reader, "NewCustomers");
-            returningCustomers = GetInt64(reader, "ReturningCustomers");
-            repeatCustomers = GetInt64(reader, "RepeatCustomers");
-            amcCustomers = GetInt64(reader, "AmcCustomers");
-            nonAmcCustomers = GetInt64(reader, "NonAmcCustomers");
+            totalCustomers      = GetInt64(reader,   "TotalCustomers");
+            newCustomers        = GetInt64(reader,   "NewCustomers");
+            returningCustomers  = GetInt64(reader,   "ReturningCustomers");
+            repeatCustomers     = GetInt64(reader,   "RepeatCustomers");
+            amcCustomers        = GetInt64(reader,   "AmcCustomers");
+            nonAmcCustomers     = GetInt64(reader,   "NonAmcCustomers");
             repeatRatePercentage = GetDecimal(reader, "RepeatRatePercentage");
         }
 
@@ -222,11 +233,13 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             {
                 trends.Add(new CustomerTrendPointReadModel(
                     GetDateOnly(reader, "PeriodStartDate"),
-                    GetString(reader, "PeriodLabel"),
-                    GetInt64(reader, "NewCustomers"),
-                    GetInt64(reader, "ReturningCustomers")));
+                    GetString(reader,  "PeriodLabel"),
+                    GetInt64(reader,   "NewCustomers"),
+                    GetInt64(reader,   "ReturningCustomers")));
             }
         }
+
+        await tx.CommitAsync(cancellationToken);
 
         return new CustomerAnalyticsReadModel(
             totalCustomers,
@@ -245,24 +258,25 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         int? supportTicketStatus,
         CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetSupportAnalytics", cancellationToken);
-        AddDateParameters(command, filter);
-        AddParameter(command, "@Status", supportTicketStatus ?? 0);
+        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
+        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
+        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetSupportAnalytics", conn, tx);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        AddDateParameters(cmd, filter);
+        AddParameter(cmd, "@Status", supportTicketStatus ?? 0);
+        AddRefCursors(cmd, 3);
 
-        long totalTickets = 0;
-        long openTickets = 0;
-        long resolvedTickets = 0;
-        long escalationCount = 0;
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        long totalTickets = 0, openTickets = 0, resolvedTickets = 0, escalationCount = 0;
         decimal averageResolutionHours = 0;
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            totalTickets = GetInt64(reader, "TotalTickets");
-            openTickets = GetInt64(reader, "OpenTickets");
-            resolvedTickets = GetInt64(reader, "ResolvedTickets");
-            escalationCount = GetInt64(reader, "EscalationCount");
+            totalTickets           = GetInt64(reader,   "TotalTickets");
+            openTickets            = GetInt64(reader,   "OpenTickets");
+            resolvedTickets        = GetInt64(reader,   "ResolvedTickets");
+            escalationCount        = GetInt64(reader,   "EscalationCount");
             averageResolutionHours = GetDecimal(reader, "AverageResolutionHours");
         }
 
@@ -275,11 +289,13 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             {
                 trends.Add(new SupportResolutionTrendPointReadModel(
                     GetDateOnly(reader, "PeriodStartDate"),
-                    GetString(reader, "PeriodLabel"),
-                    GetInt64(reader, "ResolvedTickets"),
+                    GetString(reader,  "PeriodLabel"),
+                    GetInt64(reader,   "ResolvedTickets"),
                     GetDecimal(reader, "AverageResolutionHours")));
             }
         }
+
+        await tx.CommitAsync(cancellationToken);
 
         return new SupportAnalyticsReadModel(
             totalTickets,
@@ -295,22 +311,24 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         AnalyticsQueryFilter filter,
         CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetInventoryAnalytics", cancellationToken);
-        AddDateParameters(command, filter);
+        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
+        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
+        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetInventoryAnalytics", conn, tx);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        AddDateParameters(cmd, filter);
+        AddRefCursors(cmd, 3);
 
-        long totalItems = 0;
-        long lowStockItems = 0;
-        decimal totalOnHandQuantity = 0;
-        decimal consumedQuantity = 0;
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        long totalItems = 0, lowStockItems = 0;
+        decimal totalOnHandQuantity = 0, consumedQuantity = 0;
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            totalItems = GetInt64(reader, "TotalItems");
-            lowStockItems = GetInt64(reader, "LowStockItems");
+            totalItems          = GetInt64(reader,   "TotalItems");
+            lowStockItems       = GetInt64(reader,   "LowStockItems");
             totalOnHandQuantity = GetDecimal(reader, "TotalOnHandQuantity");
-            consumedQuantity = GetDecimal(reader, "ConsumedQuantity");
+            consumedQuantity    = GetDecimal(reader, "ConsumedQuantity");
         }
 
         var lowStockSummaries = new List<LowStockInventoryItemReadModel>();
@@ -320,9 +338,9 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             while (await reader.ReadAsync(cancellationToken))
             {
                 lowStockSummaries.Add(new LowStockInventoryItemReadModel(
-                    GetInt64(reader, "ItemId"),
-                    GetString(reader, "ItemCode"),
-                    GetString(reader, "ItemName"),
+                    GetInt64(reader,   "ItemId"),
+                    GetString(reader,  "ItemCode"),
+                    GetString(reader,  "ItemName"),
                     GetDecimal(reader, "QuantityOnHand"),
                     GetDecimal(reader, "ReorderLevel"),
                     GetDecimal(reader, "ShortageQuantity")));
@@ -337,10 +355,12 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             {
                 trends.Add(new InventoryConsumptionTrendPointReadModel(
                     GetDateOnly(reader, "PeriodStartDate"),
-                    GetString(reader, "PeriodLabel"),
+                    GetString(reader,  "PeriodLabel"),
                     GetDecimal(reader, "QuantityConsumed")));
             }
         }
+
+        await tx.CommitAsync(cancellationToken);
 
         return new InventoryAnalyticsReadModel(
             totalItems,
@@ -355,31 +375,34 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         AnalyticsQueryFilter filter,
         CancellationToken cancellationToken)
     {
-        await using var command = await CreateStoredProcedureCommandAsync("dbo.uspGetReportByDateRange", cancellationToken);
-        AddDateParameters(command, filter);
+        await using var conn = await OpenNpgsqlConnectionAsync(cancellationToken);
+        await using var tx   = await conn.BeginTransactionAsync(cancellationToken);
+        await using var cmd  = BuildAnalyticsCommand("dbo.uspGetReportByDateRange", conn, tx);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        AddDateParameters(cmd, filter);
+        AddRefCursors(cmd, 4);
 
-        long totalBookings = 0;
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        long totalBookings = 0, completedJobs = 0, totalSupportTickets = 0;
+        long activeTechnicians = 0, newCustomers = 0;
         decimal totalRevenue = 0;
-        long completedJobs = 0;
-        long totalSupportTickets = 0;
-        long activeTechnicians = 0;
-        long newCustomers = 0;
 
         if (await reader.ReadAsync(cancellationToken))
         {
-            totalBookings = GetInt64(reader, "TotalBookings");
-            totalRevenue = GetDecimal(reader, "TotalRevenue");
-            completedJobs = GetInt64(reader, "CompletedJobs");
-            totalSupportTickets = GetInt64(reader, "TotalSupportTickets");
-            activeTechnicians = GetInt64(reader, "ActiveTechnicians");
-            newCustomers = GetInt64(reader, "NewCustomers");
+            totalBookings        = GetInt64(reader,   "TotalBookings");
+            totalRevenue         = GetDecimal(reader, "TotalRevenue");
+            completedJobs        = GetInt64(reader,   "CompletedJobs");
+            totalSupportTickets  = GetInt64(reader,   "TotalSupportTickets");
+            activeTechnicians    = GetInt64(reader,   "ActiveTechnicians");
+            newCustomers         = GetInt64(reader,   "NewCustomers");
         }
 
-        var bookingTrends = await ReadTrendPointsAsync(reader, cancellationToken);
-        var revenueTrends = await ReadTrendPointsAsync(reader, cancellationToken);
+        var bookingTrends            = await ReadTrendPointsAsync(reader, cancellationToken);
+        var revenueTrends            = await ReadTrendPointsAsync(reader, cancellationToken);
         var supportStatusDistribution = await ReadBreakdownItemsAsync(reader, cancellationToken);
+
+        await tx.CommitAsync(cancellationToken);
 
         return new DateRangeReportReadModel(
             filter.DateFrom,
@@ -395,19 +418,55 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             supportStatusDistribution);
     }
 
-    private async Task<DbCommand> CreateStoredProcedureCommandAsync(string procedureName, CancellationToken cancellationToken)
+    // ----------------------------------------------------------
+    // Infrastructure helpers
+    // ----------------------------------------------------------
+
+    private async Task<NpgsqlConnection> OpenNpgsqlConnectionAsync(CancellationToken cancellationToken)
+    {
+        var conn = (NpgsqlConnection)_dbContext.Database.GetDbConnection();
+        if (conn.State != ConnectionState.Open)
+            await conn.OpenAsync(cancellationToken);
+        return conn;
+    }
+
+    private static NpgsqlCommand BuildAnalyticsCommand(
+        string procedureName,
+        NpgsqlConnection conn,
+        NpgsqlTransaction tx)
+    {
+        var cmd = new NpgsqlCommand(procedureName, conn, tx);
+        cmd.CommandType = CommandType.StoredProcedure;
+        return cmd;
+    }
+
+    // Adds INOUT REFCURSOR parameters (ref1, ref2, …) so that Npgsql
+    // automatically fetches each cursor as a separate result set.
+    private static void AddRefCursors(NpgsqlCommand cmd, int count)
+    {
+        for (var i = 1; i <= count; i++)
+        {
+            cmd.Parameters.Add(new NpgsqlParameter
+            {
+                ParameterName = $"ref{i}",
+                NpgsqlDbType  = NpgsqlDbType.Refcursor,
+                Direction     = ParameterDirection.InputOutput,
+                Value         = $"cursor_{i}_{Guid.NewGuid():N}"
+            });
+        }
+    }
+
+    private async Task<DbCommand> CreateStoredProcedureCommandAsync(
+        string procedureName,
+        CancellationToken cancellationToken)
     {
         var connection = _dbContext.Database.GetDbConnection();
-
         if (connection.State != ConnectionState.Open)
-        {
             await connection.OpenAsync(cancellationToken);
-        }
 
         var command = connection.CreateCommand();
         command.CommandText = procedureName;
         command.CommandType = CommandType.StoredProcedure;
-
         return command;
     }
 
@@ -418,15 +477,13 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         var items = new List<AnalyticsTrendPointReadModel>();
 
         if (!await reader.NextResultAsync(cancellationToken))
-        {
             return items;
-        }
 
         while (await reader.ReadAsync(cancellationToken))
         {
             items.Add(new AnalyticsTrendPointReadModel(
                 GetDateOnly(reader, "PeriodStartDate"),
-                GetString(reader, "PeriodLabel"),
+                GetString(reader,  "PeriodLabel"),
                 GetDecimal(reader, "Value")));
         }
 
@@ -440,14 +497,12 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         var items = new List<AnalyticsBreakdownItemReadModel>();
 
         if (!await reader.NextResultAsync(cancellationToken))
-        {
             return items;
-        }
 
         while (await reader.ReadAsync(cancellationToken))
         {
             items.Add(new AnalyticsBreakdownItemReadModel(
-                GetString(reader, "Label"),
+                GetString(reader,  "Label"),
                 GetDecimal(reader, "Value")));
         }
 
@@ -457,8 +512,8 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
     private static void AddDateParameters(DbCommand command, AnalyticsQueryFilter filter)
     {
         AddParameter(command, "@DateFrom", filter.DateFrom.ToDateTime(TimeOnly.MinValue));
-        AddParameter(command, "@DateTo", filter.DateTo.ToDateTime(TimeOnly.MinValue));
-        AddParameter(command, "@TrendBy", filter.TrendBy);
+        AddParameter(command, "@DateTo",   filter.DateTo.ToDateTime(TimeOnly.MinValue));
+        AddParameter(command, "@TrendBy",  filter.TrendBy);
     }
 
     private static void AddParameter(DbCommand command, string name, object? value)
@@ -472,69 +527,50 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
     private static long GetInt64(DbDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
-
-        if (reader.IsDBNull(ordinal))
-        {
-            return 0;
-        }
-
+        if (reader.IsDBNull(ordinal)) return 0;
         var value = reader.GetValue(ordinal);
-
         return value switch
         {
-            long longValue => longValue,
-            int intValue => intValue,
-            short shortValue => shortValue,
-            decimal decimalValue => (long)decimalValue,
-            _ => Convert.ToInt64(value)
+            long    l => l,
+            int     i => i,
+            short   s => s,
+            decimal d => (long)d,
+            _         => Convert.ToInt64(value)
         };
     }
 
     private static decimal GetDecimal(DbDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
-
-        if (reader.IsDBNull(ordinal))
-        {
-            return 0;
-        }
-
+        if (reader.IsDBNull(ordinal)) return 0;
         var value = reader.GetValue(ordinal);
-
         return value switch
         {
-            decimal decimalValue => decimalValue,
-            double doubleValue => Convert.ToDecimal(doubleValue),
-            float floatValue => Convert.ToDecimal(floatValue),
-            long longValue => longValue,
-            int intValue => intValue,
-            _ => Convert.ToDecimal(value)
+            decimal d => d,
+            double  d => Convert.ToDecimal(d),
+            float   f => Convert.ToDecimal(f),
+            long    l => l,
+            int     i => i,
+            _         => Convert.ToDecimal(value)
         };
     }
 
     private static string GetString(DbDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
-
         return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
     }
 
     private static DateOnly GetDateOnly(DbDataReader reader, string columnName)
     {
         var ordinal = reader.GetOrdinal(columnName);
-
-        if (reader.IsDBNull(ordinal))
-        {
-            return DateOnly.MinValue;
-        }
-
+        if (reader.IsDBNull(ordinal)) return DateOnly.MinValue;
         var value = reader.GetValue(ordinal);
-
         return value switch
         {
-            DateOnly dateOnlyValue => dateOnlyValue,
-            DateTime dateTimeValue => DateOnly.FromDateTime(dateTimeValue),
-            _ => DateOnly.FromDateTime(Convert.ToDateTime(value))
+            DateOnly  d => d,
+            DateTime  d => DateOnly.FromDateTime(d),
+            _           => DateOnly.FromDateTime(Convert.ToDateTime(value))
         };
     }
 }

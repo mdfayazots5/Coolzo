@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -53,7 +53,7 @@ public sealed class InstallationSurveyConfiguration : IEntityTypeConfiguration<I
         builder.Property(entity => entity.RecommendedAction).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.MeasurementsJson).HasMaxLength(4000).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.PhotoUrlsJson).HasMaxLength(4000).HasDefaultValue(string.Empty);
-        builder.Property(entity => entity.EstimatedMaterialCost).HasColumnType("money");
+        builder.Property(entity => entity.EstimatedMaterialCost).HasColumnType("numeric(18,2)");
         builder.HasOne(entity => entity.Installation)
             .WithMany(parent => parent.Surveys)
             .HasForeignKey(entity => entity.InstallationId)
@@ -97,9 +97,9 @@ public sealed class InstallationProposalConfiguration : IEntityTypeConfiguration
         builder.Property(entity => entity.InstallationProposalId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.ProposalNumber).HasMaxLength(32).IsRequired();
         builder.Property(entity => entity.ProposalStatus).HasConversion<int>();
-        builder.Property(entity => entity.SubTotalAmount).HasColumnType("money");
-        builder.Property(entity => entity.TaxAmount).HasColumnType("money");
-        builder.Property(entity => entity.TotalAmount).HasColumnType("money");
+        builder.Property(entity => entity.SubTotalAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.TaxAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.TotalAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.ProposalRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.CustomerRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.HasIndex(entity => entity.ProposalNumber).IsUnique().HasDatabaseName("UK_tblInstallationProposal_ProposalNumber");
@@ -120,8 +120,8 @@ public sealed class InstallationProposalLineConfiguration : IEntityTypeConfigura
         builder.HasKey(entity => entity.InstallationProposalLineId).HasName("PK_tblInstallationProposalLine_InstallationProposalLineId");
         builder.Property(entity => entity.InstallationProposalLineId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.LineDescription).HasMaxLength(256).IsRequired();
-        builder.Property(entity => entity.UnitPrice).HasColumnType("money");
-        builder.Property(entity => entity.LineTotal).HasColumnType("money");
+        builder.Property(entity => entity.UnitPrice).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.LineTotal).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.Remarks).HasMaxLength(256).HasDefaultValue(string.Empty);
         builder.HasOne(entity => entity.Proposal)
             .WithMany(parent => parent.Lines)

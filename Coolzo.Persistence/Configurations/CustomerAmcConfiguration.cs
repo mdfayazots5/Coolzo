@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -17,7 +17,7 @@ public sealed class CustomerAmcConfiguration : IEntityTypeConfiguration<Customer
         builder.Property(entity => entity.EndDateUtc);
         builder.Property(entity => entity.TotalVisitCount);
         builder.Property(entity => entity.ConsumedVisitCount).HasDefaultValue(0);
-        builder.Property(entity => entity.PriceAmount).HasColumnType("money");
+        builder.Property(entity => entity.PriceAmount).HasColumnType("numeric(18,2)");
 
         builder.HasOne(entity => entity.Customer)
             .WithMany()

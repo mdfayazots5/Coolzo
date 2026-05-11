@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -18,7 +18,7 @@ public sealed class RevisitRequestConfiguration : IEntityTypeConfiguration<Revis
         builder.Property(entity => entity.PreferredVisitDateUtc);
         builder.Property(entity => entity.IssueSummary).HasMaxLength(256).IsRequired();
         builder.Property(entity => entity.RequestRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
-        builder.Property(entity => entity.ChargeAmount).HasColumnType("money");
+        builder.Property(entity => entity.ChargeAmount).HasColumnType("numeric(18,2)");
 
         builder.HasOne(entity => entity.Booking)
             .WithMany()

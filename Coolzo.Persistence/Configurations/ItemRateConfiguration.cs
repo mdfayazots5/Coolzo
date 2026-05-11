@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -12,8 +12,8 @@ public sealed class ItemRateConfiguration : IEntityTypeConfiguration<ItemRate>
         builder.HasKey(entity => entity.ItemRateId).HasName("PK_tblItemRate_ItemRateId");
 
         builder.Property(entity => entity.ItemRateId).ValueGeneratedOnAdd();
-        builder.Property(entity => entity.PurchasePrice).HasColumnType("money");
-        builder.Property(entity => entity.SellingPrice).HasColumnType("money");
+        builder.Property(entity => entity.PurchasePrice).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.SellingPrice).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.IsActive).HasDefaultValue(true);
 
         builder.HasOne(entity => entity.Item)

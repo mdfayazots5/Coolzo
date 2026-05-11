@@ -15,11 +15,11 @@ public sealed class QuotationHeaderConfiguration : IEntityTypeConfiguration<Quot
         builder.Property(entity => entity.QuotationNumber).HasMaxLength(64).IsRequired();
         builder.Property(entity => entity.CurrentStatus).HasConversion<int>();
         builder.Property(entity => entity.QuotationDateUtc);
-        builder.Property(entity => entity.SubTotalAmount).HasColumnType("money");
-        builder.Property(entity => entity.DiscountAmount).HasColumnType("money");
+        builder.Property(entity => entity.SubTotalAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.DiscountAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.TaxPercentage).HasColumnType("decimal(9,2)");
-        builder.Property(entity => entity.TaxAmount).HasColumnType("money");
-        builder.Property(entity => entity.GrandTotalAmount).HasColumnType("money");
+        builder.Property(entity => entity.TaxAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.GrandTotalAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.CustomerDecisionRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.ApprovedDateUtc);
         builder.Property(entity => entity.RejectedDateUtc);

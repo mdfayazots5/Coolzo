@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -13,8 +13,8 @@ public sealed class JobPartConsumptionConfiguration : IEntityTypeConfiguration<J
 
         builder.Property(entity => entity.JobPartConsumptionId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.QuantityUsed).HasPrecision(18, 2);
-        builder.Property(entity => entity.UnitPrice).HasColumnType("money");
-        builder.Property(entity => entity.LineAmount).HasColumnType("money");
+        builder.Property(entity => entity.UnitPrice).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.LineAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.ConsumptionRemarks).HasMaxLength(512).HasDefaultValue(string.Empty);
 
         builder.HasOne(entity => entity.JobCard)

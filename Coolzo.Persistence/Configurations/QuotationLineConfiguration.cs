@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -15,8 +15,8 @@ public sealed class QuotationLineConfiguration : IEntityTypeConfiguration<Quotat
         builder.Property(entity => entity.LineType).HasConversion<int>();
         builder.Property(entity => entity.LineDescription).HasMaxLength(256).IsRequired();
         builder.Property(entity => entity.Quantity).HasColumnType("decimal(18,2)");
-        builder.Property(entity => entity.UnitPrice).HasColumnType("money");
-        builder.Property(entity => entity.LineAmount).HasColumnType("money");
+        builder.Property(entity => entity.UnitPrice).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.LineAmount).HasColumnType("numeric(18,2)");
 
         builder.HasOne(entity => entity.QuotationHeader)
             .WithMany(header => header.Lines)

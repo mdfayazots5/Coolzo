@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -14,8 +14,8 @@ public sealed class StockTransactionConfiguration : IEntityTypeConfiguration<Sto
         builder.Property(entity => entity.StockTransactionId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.TransactionType).HasConversion<int>();
         builder.Property(entity => entity.Quantity).HasPrecision(18, 2);
-        builder.Property(entity => entity.UnitCost).HasColumnType("money");
-        builder.Property(entity => entity.Amount).HasColumnType("money");
+        builder.Property(entity => entity.UnitCost).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.Amount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.ReferenceNumber).HasMaxLength(64).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.TransactionGroupCode).HasMaxLength(64).HasDefaultValue(string.Empty);
         builder.Property(entity => entity.Remarks).HasMaxLength(512).HasDefaultValue(string.Empty);

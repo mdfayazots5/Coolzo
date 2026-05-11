@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -15,8 +15,8 @@ public sealed class BookingLineConfiguration : IEntityTypeConfiguration<BookingL
         builder.Property(entity => entity.ModelName).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.IssueNotes).HasMaxLength(512).IsRequired();
         builder.Property(entity => entity.Quantity).HasDefaultValue(1);
-        builder.Property(entity => entity.UnitPrice).HasColumnType("money");
-        builder.Property(entity => entity.LineTotal).HasColumnType("money");
+        builder.Property(entity => entity.UnitPrice).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.LineTotal).HasColumnType("numeric(18,2)");
 
         builder.HasOne(entity => entity.Booking)
             .WithMany(booking => booking.BookingLines)

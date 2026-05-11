@@ -18,7 +18,7 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Property(entity => entity.BookingStatus).HasConversion<int>();
         builder.Property(entity => entity.SourceChannel).HasConversion<int>();
         builder.Property(entity => entity.IsEmergency).HasDefaultValue(false);
-        builder.Property(entity => entity.EmergencySurchargeAmount).HasColumnType("money").HasDefaultValue(0);
+        builder.Property(entity => entity.EmergencySurchargeAmount).HasColumnType("numeric(18,2)").HasDefaultValue(0);
         builder.Property(entity => entity.CustomerNameSnapshot).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.MobileNumberSnapshot).HasMaxLength(32).IsRequired();
         builder.Property(entity => entity.EmailAddressSnapshot).HasMaxLength(128).IsRequired();
@@ -29,7 +29,7 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Property(entity => entity.PincodeSnapshot).HasMaxLength(16).IsRequired();
         builder.Property(entity => entity.ZoneNameSnapshot).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.ServiceNameSnapshot).HasMaxLength(128).IsRequired();
-        builder.Property(entity => entity.EstimatedPrice).HasColumnType("money");
+        builder.Property(entity => entity.EstimatedPrice).HasColumnType("numeric(18,2)");
 
         builder.HasOne(entity => entity.Customer)
             .WithMany(customer => customer.Bookings)

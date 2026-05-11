@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -14,9 +14,9 @@ public sealed class PurchaseOrderConfiguration : IEntityTypeConfiguration<Purcha
         builder.Property(entity => entity.PurchaseOrderId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.PONumber).HasMaxLength(64);
         builder.Property(entity => entity.CurrentStatus).HasConversion<int>();
-        builder.Property(entity => entity.SubtotalAmount).HasColumnType("money");
-        builder.Property(entity => entity.TaxAmount).HasColumnType("money");
-        builder.Property(entity => entity.TotalAmount).HasColumnType("money");
+        builder.Property(entity => entity.SubtotalAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.TaxAmount).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.TotalAmount).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.Notes).HasMaxLength(1024);
 
         builder.HasOne(entity => entity.Supplier)
@@ -48,8 +48,8 @@ public sealed class PurchaseOrderItemConfiguration : IEntityTypeConfiguration<Pu
         builder.Property(entity => entity.PartName).HasMaxLength(256);
         builder.Property(entity => entity.QuantityOrdered).HasPrecision(12, 2);
         builder.Property(entity => entity.QuantityReceived).HasPrecision(12, 2);
-        builder.Property(entity => entity.UnitPrice).HasColumnType("money");
-        builder.Property(entity => entity.Amount).HasColumnType("money");
+        builder.Property(entity => entity.UnitPrice).HasColumnType("numeric(18,2)");
+        builder.Property(entity => entity.Amount).HasColumnType("numeric(18,2)");
 
         builder.HasOne(entity => entity.PurchaseOrder)
             .WithMany(entity => entity.Items)

@@ -1,4 +1,4 @@
-using Coolzo.Domain.Entities;
+﻿using Coolzo.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -14,7 +14,7 @@ public sealed class PricingModelConfiguration : IEntityTypeConfiguration<Pricing
         builder.Property(entity => entity.PricingModelId).ValueGeneratedOnAdd();
         builder.Property(entity => entity.PricingModelName).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.Description).HasMaxLength(256).IsRequired();
-        builder.Property(entity => entity.BasePrice).HasColumnType("money");
+        builder.Property(entity => entity.BasePrice).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.IsActive).HasDefaultValue(true);
 
         builder.HasIndex(entity => entity.PricingModelName)
