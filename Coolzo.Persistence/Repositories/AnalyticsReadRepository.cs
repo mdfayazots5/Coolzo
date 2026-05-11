@@ -177,7 +177,7 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
                       JOIN public.""tblQuotationHeader""  qh ON jc.""JobCardId""        = qh.""JobCardId""
                       JOIN public.""tblBookingLine""      bl ON bl.""BookingId""        = b.""BookingId""
                       WHERE qh.""QuotationHeaderId"" = ih.""QuotationHeaderId""
-                        AND bl.""ServiceId"" = @svcId)))"))
+                        AND bl.""ServiceId"" = @svcId))"))
         {
             P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@svcId", svcId);
             await using var r = await cmd.ExecuteReaderAsync(ct);
