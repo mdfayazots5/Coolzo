@@ -78,9 +78,9 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
             FROM public.""tblBooking"" b
             WHERE NOT COALESCE(b.""IsDeleted"", FALSE)
               AND b.""BookingDateUtc"" >= @df AND b.""BookingDateUtc"" < @dt
-              AND (@svcId = 0 OR b.""SlotAvailabilityId"" IN (
-                      SELECT sa.""SlotAvailabilityId"" FROM public.""tblSlotAvailability"" sa
-                      WHERE sa.""ServiceId"" = @svcId))
+              AND (@svcId = 0 OR EXISTS (
+                      SELECT 1 FROM public.""tblBookingLine"" bl
+                      WHERE bl.""BookingId"" = b.""BookingId"" AND bl.""ServiceId"" = @svcId))
               AND (@status = 0 OR b.""BookingStatus"" = @status)"))
         {
             P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
@@ -97,9 +97,9 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
         var trends = new List<AnalyticsTrendPointReadModel>();
         await using (var cmd = Cmd(conn, TrendSql("b.\"BookingDateUtc\"", "public.\"tblBooking\" b",
             "NOT COALESCE(b.\"IsDeleted\", FALSE) AND b.\"BookingDateUtc\" >= @df AND b.\"BookingDateUtc\" < @dt\n" +
-            "              AND (@svcId = 0 OR b.\"SlotAvailabilityId\" IN (\n" +
-            "                      SELECT sa.\"SlotAvailabilityId\" FROM public.\"tblSlotAvailability\" sa\n" +
-            "                      WHERE sa.\"ServiceId\" = @svcId))\n" +
+            "              AND (@svcId = 0 OR EXISTS (\n" +
+            "                      SELECT 1 FROM public.\"tblBookingLine\" bl\n" +
+            "                      WHERE bl.\"BookingId\" = b.\"BookingId\" AND bl.\"ServiceId\" = @svcId))\n" +
             "              AND (@status = 0 OR b.\"BookingStatus\" = @status)", "COUNT(*)::NUMERIC(18,2)")))
         {
             P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@trend", trend);
@@ -175,10 +175,9 @@ public sealed class AnalyticsReadRepository : IAnalyticsReadRepository
                       JOIN public.""tblServiceRequest""  sr ON b.""BookingId""         = sr.""BookingId""
                       JOIN public.""tblJobCard""          jc ON sr.""ServiceRequestId"" = jc.""ServiceRequestId""
                       JOIN public.""tblQuotationHeader""  qh ON jc.""JobCardId""        = qh.""JobCardId""
+                      JOIN public.""tblBookingLine""      bl ON bl.""BookingId""        = b.""BookingId""
                       WHERE qh.""QuotationHeaderId"" = ih.""QuotationHeaderId""
-                        AND b.""SlotAvailabilityId"" IN (
-                            SELECT sa.""SlotAvailabilityId"" FROM public.""tblSlotAvailability"" sa
-                            WHERE sa.""ServiceId"" = @svcId)))"))
+                        AND bl.""ServiceId"" = @svcId)))"))
         {
             P(cmd, "@df", df); P(cmd, "@dt", dt); P(cmd, "@svcId", svcId);
             await using var r = await cmd.ExecuteReaderAsync(ct);
