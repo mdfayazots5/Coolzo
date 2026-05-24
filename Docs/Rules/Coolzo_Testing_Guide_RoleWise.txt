@@ -1,0 +1,2026 @@
+
+================================================================================
+       COOLZO — PREMIUM AC SERVICE PLATFORM
+       COMPLETE TESTING GUIDE FOR QA TEAM
+       Role-Wise | Module-Wise | Step-by-Step
+================================================================================
+       Version : 1.0
+       Prepared : For QA / Testing Team Use
+       Platform : Coolzo Admin Web Portal + Customer Web + Admin Flutter App
+                  + Customer Flutter App
+       Tagline  : Precision. Comfort. Trust.
+================================================================================
+
+HOW TO READ AND USE THIS DOCUMENT
+================================================================================
+This document is organized in the following order:
+
+  SECTION A  : TESTING ENVIRONMENT SETUP
+  SECTION B  : MASTER DATA SETUP (MUST BE DONE FIRST — BEFORE ANY ROLE TESTING)
+  SECTION C  : ROLE-WISE TESTING GUIDE
+               Role 01 : Super Admin
+               Role 02 : Admin / Branch Manager
+               Role 03 : Operations Manager
+               Role 04 : Operations Executive
+               Role 05 : Customer Support Executive
+               Role 06 : Technician
+               Role 07 : Helper / Field Assistant
+               Role 08 : Inventory / Store Manager
+               Role 09 : Billing / Accounts Executive
+               Role 10 : Finance Manager
+               Role 11 : Marketing Manager
+               Role 12 : Customer (Registered User)
+               Role 13 : Guest / Website Visitor
+  SECTION D  : END-TO-END SCENARIO-BASED TEST FLOWS
+  SECTION E  : WHAT TO LOG AS A BUG / DEFECT
+
+IMPORTANT RULES FOR TESTING TEAM:
+  1. Always complete SECTION B (Master Data Setup) before testing any role.
+  2. Test each role using a dedicated test account — do NOT share login accounts.
+  3. Always note the test date, tester name, and platform (Web / Mobile) in bug logs.
+  4. Take screenshots for every defect found.
+  5. If a button or menu is not visible for a role, check Section E to determine
+     if it is expected behavior or a bug.
+  6. Test on both Web and Mobile (Flutter App) where applicable.
+  7. Test positive flows (happy path) first, then negative flows (wrong input, 
+     edge cases) second.
+
+
+================================================================================
+SECTION A — TESTING ENVIRONMENT SETUP
+================================================================================
+
+A.1 TEST ACCOUNTS REQUIRED
+----------------------------
+Create one test account per role in the system before starting:
+
+  ROLE                          | EMAIL / ID FORMAT SUGGESTION
+  ------------------------------|----------------------------------------------
+  Super Admin                   | superadmin@coolzotest.com
+  Admin / Branch Manager        | branchadmin@coolzotest.com
+  Operations Manager            | opsmanager@coolzotest.com
+  Operations Executive          | opsexec@coolzotest.com
+  Customer Support Executive    | csagent@coolzotest.com
+  Technician                    | tech01 (Employee ID) / PIN: 1234
+  Helper / Field Assistant      | helper01 (Employee ID) / PIN: 5678
+  Inventory / Store Manager     | storemanager@coolzotest.com
+  Billing / Accounts Executive  | billing@coolzotest.com
+  Finance Manager               | finance@coolzotest.com
+  Marketing Manager             | marketing@coolzotest.com
+  Customer (Registered)         | customer@coolzotest.com / Phone: 9000000001
+  Guest                         | No login — use browser in incognito mode
+
+A.2 TEST DEVICES
+-----------------
+  - Admin Web Portal   : Chrome / Edge browser on desktop
+  - Customer Web App   : Chrome browser (also test mobile responsive view)
+  - Admin Flutter App  : Android device or emulator
+  - Customer Flutter App: Android device or emulator
+
+A.3 TEST DATA DEFAULTS TO USE
+-------------------------------
+  Company Name    : Coolzo Test Branch
+  City / Zone     : Hyderabad - Zone A (create this in master data first)
+  PIN Code        : 500001
+  AC Brand        : Daikin, LG, Samsung (create in master data)
+  Service Types   : AC Repair, AC Cleaning, Gas Refilling, Installation, AMC
+  Test Customer   : Name: Arjun Sharma | Phone: 9000000001 | Type: Residential
+  Test Equipment  : Daikin 1.5 Ton Split AC | Location: Living Room
+
+
+================================================================================
+SECTION B — MASTER DATA SETUP (MUST DO FIRST)
+================================================================================
+
+WHO DOES THIS: Super Admin
+WHERE: Admin Web Portal → Configuration → Master Data
+
+This is the FOUNDATION. No other testing is possible without this data.
+The Super Admin must complete ALL steps below before the QA team starts
+testing individual roles.
+
+------------------------------------------------------------------------
+B.1 — BRANCH SETUP
+------------------------------------------------------------------------
+Step 1: Log in as Super Admin to the Admin Web Portal.
+Step 2: Go to Configuration → Branch Management.
+Step 3: Click "Create Branch".
+Step 4: Enter:
+         Branch Name   : Hyderabad - Main Branch
+         City          : Hyderabad
+         Address       : 1st Floor, Tech Tower, Hyderabad
+Step 5: Assign a Branch Manager (can be done after user creation).
+Step 6: Save. Verify the branch appears in the list.
+
+------------------------------------------------------------------------
+B.2 — ZONE / TERRITORY MASTER
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Master Data → Zone / Territory.
+Step 2: Click "Create Zone".
+Step 3: Create the following zones:
+         Zone Name: Hyderabad - Zone A
+           PIN Codes: 500001, 500002, 500003
+           Service Availability: Yes
+         Zone Name: Hyderabad - Zone B
+           PIN Codes: 500004, 500005
+           Service Availability: Yes
+Step 4: Save. Verify both zones appear with PIN codes mapped.
+Step 5: Check: Zone A should show "Service Available" badge.
+
+------------------------------------------------------------------------
+B.3 — SERVICE TYPE CATALOG
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Master Data → Service Type Catalog.
+Step 2: Create each of the following service types:
+         a) Service Name : AC Repair
+            Category     : Repair
+            Duration Est : 60 minutes
+            Base Price   : Rs. 499
+            Visible on Website: Yes
+            Sub-types to add:
+              - Cooling Issue
+              - Water Leakage
+              - Noise Problem
+              - Electrical Fault
+
+         b) Service Name : AC Cleaning / Service
+            Category     : Maintenance
+            Duration Est : 45 minutes
+            Base Price   : Rs. 349
+            Visible on Website: Yes
+
+         c) Service Name : Gas Refilling (R-32)
+            Category     : Maintenance
+            Duration Est : 30 minutes
+            Base Price   : Rs. 799
+            Visible on Website: Yes
+
+         d) Service Name : AC Installation
+            Category     : Installation
+            Duration Est : 120 minutes
+            Base Price   : Rs. 1,499
+            Visible on Website: Yes
+
+         e) Service Name : AMC Enrollment
+            Category     : AMC
+            Duration Est : N/A
+            Visible on Website: Yes
+
+Step 3: Save and verify all 5 service types appear in the catalog.
+Step 4: Open the Customer Website (public) and confirm the services are
+        visible on the Services Listing Page.
+
+------------------------------------------------------------------------
+B.4 — EQUIPMENT BRAND AND MODEL CATALOG
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Master Data → Equipment Brand & Model.
+Step 2: Create the following brands with sample models:
+         Brand: Daikin
+           Models: FTKF35TV, FTKP50TV, FTKM60TV
+         Brand: LG
+           Models: PS-Q12YNXE, PS-Q18YNXE
+         Brand: Samsung
+           Models: AR12BYNZEWK, AR18BYNZEWK
+         Brand: Voltas
+           Models: 183V DZW, 243V DZW
+Step 3: Save. Verify brands appear in the dropdown on the booking wizard.
+
+------------------------------------------------------------------------
+B.5 — URGENCY LEVEL CONFIGURATION
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Urgency Level Configuration.
+Step 2: Verify / create:
+         Level: Normal   | SLA Assignment: 4 hours  | Surcharge: 0%
+         Level: Urgent   | SLA Assignment: 2 hours  | Surcharge: 10%
+         Level: Emergency| SLA Assignment: 30 mins  | Surcharge: 25%
+Step 3: Save. Verify all three levels are active.
+
+------------------------------------------------------------------------
+B.6 — SLA CONFIGURATION
+------------------------------------------------------------------------
+Step 1: Go to Configuration → SLA Target Configuration.
+Step 2: Set:
+         Normal   : SR to Assignment = 4 hrs | Assignment to On-site = 12 hrs
+         Urgent   : SR to Assignment = 2 hrs | Assignment to On-site = 6 hrs
+         Emergency: SR to Assignment = 30 min | Assignment to On-site = 4 hrs
+Step 3: Save and confirm.
+
+------------------------------------------------------------------------
+B.7 — BUSINESS HOURS
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Business Hours & Holiday Calendar.
+Step 2: Set working days: Monday to Saturday
+Step 3: Hours: 8:00 AM to 7:00 PM
+Step 4: Add one test holiday: "Test Holiday" on a future date.
+Step 5: Save. Verify booking wizard does not show the holiday date as available.
+
+------------------------------------------------------------------------
+B.8 — AMC PLAN MASTER
+------------------------------------------------------------------------
+Step 1: Go to Configuration → AMC Plan Master.
+Step 2: Create 3 AMC plans:
+
+  Plan A: Basic AMC
+    Tier         : Basic
+    Visits/Year  : 2
+    Service Type : AC Cleaning (included)
+    Price        : Rs. 1,499 / year
+    Valid For    : 12 months
+
+  Plan B: Standard AMC
+    Tier         : Standard
+    Visits/Year  : 4
+    Service Type : AC Cleaning + Minor Repair (included)
+    Price        : Rs. 2,999 / year
+    Valid For    : 12 months
+
+  Plan C: Premium AMC
+    Tier         : Premium
+    Visits/Year  : 6
+    Service Type : AC Cleaning + Repair + Gas Check (included)
+    Price        : Rs. 4,999 / year
+    Valid For    : 12 months
+
+Step 3: Save. Verify plans appear on the AMC Plans page of the customer website.
+
+------------------------------------------------------------------------
+B.9 — TAX CONFIGURATION
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Tax Configuration.
+Step 2: Set:
+         Tax Type : GST
+         Labor    : 18% GST
+         Parts    : 18% GST
+Step 3: Enable Tax-Exclusive pricing (show tax as a separate line on invoice).
+Step 4: Save.
+
+------------------------------------------------------------------------
+B.10 — PRICING CONFIGURATION
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Service Base Pricing.
+Step 2: Set price matrix for:
+         AC Repair × Split AC × 1.5 Ton × Zone A = Rs. 499
+         AC Cleaning × Split AC × 1.5 Ton × Zone A = Rs. 349
+         Gas Refilling × Split AC × 1.5 Ton × Zone A = Rs. 799
+Step 3: Save. Verify prices appear correctly on the booking wizard summary.
+
+------------------------------------------------------------------------
+B.11 — TECHNICIAN SKILL TAGS
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Technician Skill Tags.
+Step 2: Create skill tags:
+         - Split AC Specialist
+         - Window AC Specialist
+         - Gas Charging Certified
+         - Installation Certified
+         - Daikin Brand Certified
+         - LG Brand Certified
+Step 3: Save.
+
+------------------------------------------------------------------------
+B.12 — SLOT AVAILABILITY CONFIGURATION
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Slot Availability Configuration.
+Step 2: Set:
+         Slot Duration        : 3 hours
+         Buffer Between Jobs  : 30 minutes
+         Max Jobs/Technician  : 4 per day
+         Advance Booking      : Up to 7 days
+         Same-day Cutoff      : 4 hours before slot
+Step 3: Save. Verify booking wizard shows correct slots.
+
+------------------------------------------------------------------------
+B.13 — NOTIFICATION TRIGGER SETUP
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Notification Template Editor.
+Step 2: Verify the following triggers exist and are enabled:
+         - Booking Confirmed       → Customer → WhatsApp + Email
+         - Technician Assigned     → Customer → WhatsApp + Push
+         - Technician En Route     → Customer → WhatsApp + Push
+         - Job Completed           → Customer → WhatsApp + Email
+         - Invoice Sent            → Customer → WhatsApp + Email
+         - Feedback Request        → Customer → WhatsApp (2 hrs post-job)
+         - New Job Assigned        → Technician → Push + In-App
+         - Parts Request Approved  → Technician → Push
+Step 3: For each template, insert the correct merge tags:
+         {CustomerName}, {TechnicianName}, {JobNo}, {ServiceType}, {ETATime}
+Step 4: Save all templates. Verify no template shows "undefined" merge tags.
+
+------------------------------------------------------------------------
+B.14 — COUPON CREATION
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Coupon & Discount Manager.
+Step 2: Create a test coupon:
+         Code            : TESTQC10
+         Type            : Percentage
+         Discount        : 10%
+         Applicable To   : All Services
+         Usage Limit     : 50
+         Expiry          : 30 days from today
+         Min Order Value : Rs. 299
+Step 3: Save. Verify the coupon works on the booking wizard Step 5.
+
+------------------------------------------------------------------------
+B.15 — PAYMENT TERMS CONFIGURATION
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Payment Terms.
+Step 2: Set:
+         Residential Customers: Due Immediately
+         Corporate Customers  : Net-30
+         Allowed Methods      : Online (Card / UPI / Wallet), COD
+Step 3: Save.
+
+------------------------------------------------------------------------
+B.16 — INVOICE NUMBERING
+------------------------------------------------------------------------
+Step 1: Go to Configuration → Invoice Numbering Format.
+Step 2: Set:
+         Prefix  : CZ
+         Format  : CZ/YYYY/MM/0001
+Step 3: Save. Verify first invoice created follows this format.
+
+========= MASTER DATA SETUP COMPLETE =========
+All team members may now proceed to role-wise testing below.
+==============================================
+
+
+================================================================================
+SECTION C — ROLE-WISE TESTING GUIDE
+================================================================================
+
+
+================================================================================
+ROLE 01 — SUPER ADMIN
+================================================================================
+
+WHAT IS THIS ROLE?
+  Super Admin has unrestricted access to ALL modules, ALL data, ALL branches,
+  and ALL configuration across the entire Coolzo platform. This is the highest
+  privilege role. Changes made by Super Admin affect every other user.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal (primary)
+  - Admin Flutter App (secondary)
+
+PRE-CONDITION:
+  - Master Data (Section B) must be complete before testing other modules.
+  - Super Admin is the one who SETS UP master data.
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Open Admin Web Portal login page.
+Step 2: Enter Super Admin email and password.
+Step 3: Complete 2FA — enter the 6-digit OTP sent to registered mobile/email.
+Step 4: Verify you are redirected to the Admin Dashboard.
+Step 5: Verify the role badge shows "Super Admin" in the top navigation bar.
+
+NEGATIVE TEST:
+  - Enter wrong password → verify "Invalid credentials" error message appears.
+  - Enter wrong OTP → verify "Invalid OTP" message and retry option.
+  - Enter expired OTP → verify "OTP expired. Please resend." message.
+  - Wait for session to expire → verify auto-logout and redirect to login.
+
+=== MODULE 2: USER MANAGEMENT ===
+
+Step 1: Go to Admin Portal → User Management.
+Step 2: Verify the user list shows all users from all branches.
+Step 3: CREATE USER — Test creating one user per role:
+         a) Click "Create User"
+         b) Fill: Full Name, Email, Mobile, Role = "Operations Manager"
+         c) Select Branch: Hyderabad - Main Branch
+         d) Toggle "Send Welcome Email" ON
+         e) Click "Create User"
+         f) Verify user appears in the list.
+         g) Verify welcome email/notification is sent.
+
+Step 4: EDIT USER:
+         a) Open the user just created.
+         b) Change role from "Operations Manager" to "Operations Executive".
+         c) Verify confirmation dialog appears explaining the role change impact.
+         d) Confirm. Verify role badge updates in the user list.
+
+Step 5: RESET PASSWORD:
+         a) Open any internal user.
+         b) Click "Reset Password".
+         c) Verify a notification is sent to the user's registered contact.
+         d) Verify admin can set a temporary password.
+
+Step 6: DEACTIVATE USER:
+         a) Open the test user.
+         b) Click "Deactivate User".
+         c) Verify a confirmation bottom sheet appears listing consequences.
+         d) Enter reason: "Test deactivation".
+         e) Confirm deactivation.
+         f) Verify the user status shows "Inactive" in the list.
+         g) Try logging in as that deactivated user → must fail with clear message.
+
+Step 7: REACTIVATE USER:
+         a) Find the deactivated user in the list (use "Inactive" filter).
+         b) Click "Reactivate". Confirm.
+         c) Verify status returns to "Active".
+
+Step 8: VIEW AS ROLE:
+         a) In the Admin Portal navigation, find "View As Role".
+         b) Select "Technician" from the dropdown.
+         c) Verify a persistent ORANGE banner appears: "Viewing as: Technician"
+         d) Verify the navigation tabs change to Technician's limited set.
+         e) Verify Super Admin cannot perform actions the Technician cannot.
+         f) Click "Exit View As" → verify Super Admin navigation is restored.
+
+NEGATIVE TESTS:
+  - Try creating a user with a duplicate email → verify duplicate check error.
+  - Try deactivating your own Super Admin account → must be blocked.
+  - Try creating a user without mandatory fields → verify inline validation errors.
+
+=== MODULE 3: ROLE & PERMISSION MANAGEMENT ===
+
+Step 1: Go to Admin Portal → Role & Permission Manager.
+Step 2: Verify all 11 internal roles are listed.
+Step 3: Click on "Operations Executive" role.
+Step 4: Verify the permission matrix shows modules with View/Create/Edit/Delete/
+        Approve/Export toggles per module.
+Step 5: EDIT PERMISSION:
+         a) Turn OFF "Delete" permission on "Service Request" module.
+         b) Save.
+         c) Log in as Operations Executive.
+         d) Go to Service Requests → verify the "Delete" button/action is hidden.
+         e) Log back as Super Admin and restore the permission.
+
+Step 6: CREATE CUSTOM ROLE:
+         a) Click "Create Custom Role".
+         b) Name: "Senior Technician" | Base Template: Technician
+         c) Add extra permission: View access to "Customer Management".
+         d) Save. Verify new role appears in role list.
+         e) Assign this role to the test technician user.
+         f) Log in as that technician → verify "Customers" tab appears (read-only).
+
+=== MODULE 4: BRANCH MANAGEMENT ===
+
+Step 1: Go to Configuration → Branch Management.
+Step 2: Verify the test branch "Hyderabad - Main Branch" is listed.
+Step 3: Click on the branch to open Branch Detail.
+Step 4: Verify: City, Address, Branch Manager name, Zone coverage, Team summary.
+Step 5: Edit: Change Branch Manager to a different admin user. Save.
+Step 6: Verify Branch Manager assignment updates correctly.
+
+=== MODULE 5: AUDIT LOG VIEWER ===
+
+Step 1: Go to Admin Portal → Audit Log Viewer.
+Step 2: Filter by Action: "Create" → verify user creation from Module 2 is logged.
+Step 3: Filter by Entity Type: "User" → verify all user changes are visible.
+Step 4: Click on an audit entry → verify before/after JSON diff is shown.
+Step 5: Filter by User: Super Admin's name → verify all Super Admin actions listed.
+Step 6: Attempt to delete any audit log entry → must be blocked (append-only).
+Step 7: Export the audit log (filtered) to CSV → verify file downloads correctly.
+
+=== MODULE 6: SYSTEM CONFIGURATION PANEL ===
+
+Step 1: Go to Configuration → System Configuration Home.
+Step 2: Verify all configuration sub-modules are listed and accessible.
+Step 3: Make a minor change: Update "Invoice Numbering Prefix" to "CZT".
+Step 4: Create a test invoice → verify new prefix "CZT" is applied.
+Step 5: Revert prefix back to "CZ".
+
+=== MODULE 7: NOTIFICATIONS / TEMPLATE EDITOR ===
+
+Step 1: Go to Configuration → Notification Template Editor.
+Step 2: Open the "Booking Confirmed" WhatsApp template.
+Step 3: Edit the message body to add a new line: "Thank you for choosing Coolzo!"
+Step 4: Save.
+Step 5: Create a new test booking from the customer website.
+Step 6: Verify the booking confirmation WhatsApp message includes the new line.
+Step 7: Revert the template to its original content.
+
+EXPECTED OUTCOME:
+  - Super Admin can view and configure everything.
+  - Super Admin can impersonate any role via "View As".
+  - Audit logs capture every action.
+  - All configuration changes are reflected in real-time across the platform.
+
+
+================================================================================
+ROLE 02 — ADMIN / BRANCH MANAGER
+================================================================================
+
+WHAT IS THIS ROLE?
+  Admin / Branch Manager manages a specific branch. They have full access to
+  all operations, customers, technicians, and financials WITHIN their branch.
+  They CANNOT see data from other branches.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal
+  - Admin Flutter App
+
+PRE-CONDITION:
+  - Branch "Hyderabad - Main Branch" must exist.
+  - Admin user must be assigned to this branch.
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as Branch Admin (email + password).
+Step 2: Complete 2FA if required.
+Step 3: Verify role badge shows "Admin / Branch Manager".
+Step 4: Verify you can only see data for "Hyderabad - Main Branch".
+Step 5: Try accessing another branch's data (if URL allows direct access) →
+        must be blocked with "Access Denied" or redirect to own branch data.
+
+=== MODULE 2: TEAM MANAGEMENT ===
+
+Step 1: Go to User Management.
+Step 2: Verify only users from Hyderabad - Main Branch are visible.
+Step 3: Create a new Technician:
+         Name: Test Technician One
+         Employee ID: TECH001
+         Role: Technician
+         Branch: Hyderabad - Main Branch
+         Initial PIN: 1234
+Step 4: Assign skills: "Split AC Specialist", "Gas Charging Certified"
+Step 5: Assign zones: Hyderabad - Zone A
+Step 6: Save. Verify technician appears in the Technician List.
+
+=== MODULE 3: SERVICE REQUEST MANAGEMENT ===
+
+Step 1: Go to Service Requests.
+Step 2: Verify all SRs from the branch are visible.
+Step 3: Create a manual SR:
+         Customer: Arjun Sharma (test customer)
+         Service Type: AC Repair → Cooling Issue
+         Equipment: Daikin 1.5 Ton Split
+         Location: Zone A address
+         Urgency: Normal
+         Date: Tomorrow
+Step 4: Assign the SR to Test Technician One.
+Step 5: Verify SR status changes to "Scheduled".
+Step 6: Verify technician receives notification.
+
+=== MODULE 4: OPERATIONS OVERVIEW ===
+
+Step 1: Go to Admin Dashboard.
+Step 2: Verify branch-level KPIs: Today's Jobs, SLA Compliance, Active Technicians.
+Step 3: Open the Live Job Map → verify job pins appear for branch SRs.
+Step 4: Go to Technician Status Board → verify Test Technician One is visible.
+
+=== MODULE 5: REPORTING ===
+
+Step 1: Go to Reports Hub.
+Step 2: Generate "Daily Job Sheet" for today → verify PDF downloads correctly.
+Step 3: Generate "Technician Performance Report" for Test Technician One.
+Step 4: Verify Admin CANNOT see financial P&L beyond their branch.
+
+EXPECTED OUTCOME:
+  - Branch Admin sees only their branch data.
+  - Can manage users, SRs, technicians, and operations within the branch.
+  - Cannot access global configuration or other branches.
+
+
+================================================================================
+ROLE 03 — OPERATIONS MANAGER
+================================================================================
+
+WHAT IS THIS ROLE?
+  Operations Manager oversees the entire field operations. They manage
+  technician teams, review SLA performance, handle escalations, and
+  monitor live operations. They do NOT manage financial P&L or system config.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal
+  - Admin Flutter App
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as Operations Manager.
+Step 2: Verify bottom navigation shows: Dashboard / Service Requests / Technicians / More.
+Step 3: Verify "Finance" or "Billing" modules are NOT accessible.
+
+=== MODULE 2: LIVE OPERATIONS DASHBOARD ===
+
+Step 1: Go to Operations Dashboard.
+Step 2: Verify the Live KPI Strip shows:
+         - Total Jobs Today
+         - Assigned / In-Progress / Completed
+         - Pending Assignment count
+         - Overdue count
+         - SLA Compliance %
+Step 3: Verify KPI tiles auto-refresh every 60 seconds.
+Step 4: Tap/click the "Pending Assignment" tile → verify SR list filters to
+        unassigned SRs only.
+Step 5: Open the SLA Alert Panel → verify any at-risk jobs are listed in AMBER.
+Step 6: If any jobs are breached → verify they appear in RED.
+
+=== MODULE 3: TECHNICIAN MANAGEMENT ===
+
+Step 1: Go to Technician List.
+Step 2: Filter by Zone: Hyderabad - Zone A.
+Step 3: Click on Test Technician One.
+Step 4: Verify the full profile: skills, zones, performance summary.
+Step 5: Open Performance Dashboard:
+         - Jobs Completed this month
+         - Average Rating
+         - SLA Compliance %
+         - Revisit Rate %
+Step 6: Edit skills: Add "Installation Certified". Save.
+Step 7: View Technician GPS Log for today → verify check-in coordinates.
+Step 8: Open Attendance Management → verify monthly calendar view.
+Step 9: Approve a leave request (if one exists):
+         a) Go to Attendance → Leave Requests
+         b) Find pending leave → Approve. Verify technician is notified.
+
+=== MODULE 4: SERVICE REQUEST MANAGEMENT ===
+
+Step 1: Go to Service Request List.
+Step 2: Use multi-select to select 2 unassigned SRs.
+Step 3: Click "Bulk Assign" → assign both to Test Technician One.
+Step 4: Verify both SRs show "Scheduled" status.
+Step 5: Open one SR → click "Escalate".
+         Reason: SLA Breach Risk
+         Escalated To: Branch Admin
+         Add note: "Test escalation"
+Step 6: Verify Branch Admin receives escalation notification.
+Step 7: Open a completed SR → verify Job Timeline shows all milestones.
+Step 8: Try to access a Financial P&L Report → must be blocked.
+
+=== MODULE 5: JOB SCHEDULING BOARD ===
+
+Step 1: Go to Scheduling Board.
+Step 2: Switch to Day View for tomorrow.
+Step 3: Verify Test Technician One's column shows assigned jobs as colored blocks.
+Step 4: Drag one job block to a different time slot:
+         a) Confirm conflict detection works (if overlapping: red highlight).
+         b) Complete the drag → verify reschedule confirmation dialog.
+         c) Toggle "Customer Notification" ON → confirm.
+Step 5: Switch to Week View → verify job distribution across 7 days.
+Step 6: Switch to Technician View for Test Technician One:
+         a) Verify their full day schedule.
+         b) Click "Export / Print Day Sheet" → verify PDF or share option.
+
+=== MODULE 6: ESCALATION MANAGEMENT ===
+
+Step 1: Create a test escalation (as described in Module 4 Step 5 above).
+Step 2: Go to any pending escalation in the ticket or SR module.
+Step 3: Assign the escalation to Operations Manager (self).
+Step 4: Add a resolution note.
+Step 5: Mark the escalation resolved.
+
+=== MODULE 7: REPORTS ===
+
+Step 1: Go to Reports Hub.
+Step 2: Generate "SLA Compliance Report" for this week.
+Step 3: Verify the report shows: breach count, average breach duration, by zone.
+Step 4: Generate "Technician Performance Report" for all technicians.
+Step 5: Export both to CSV. Verify download succeeds.
+
+EXPECTED OUTCOME:
+  - Full visibility of live field operations and SLA status.
+  - Can manage technicians, scheduling, escalations.
+  - Financial modules (P&L, billing) are NOT accessible.
+
+
+================================================================================
+ROLE 04 — OPERATIONS EXECUTIVE
+================================================================================
+
+WHAT IS THIS ROLE?
+  Operations Executive is responsible for DAY-TO-DAY dispatch and scheduling.
+  They assign technicians, reschedule jobs, and monitor the job queue. They do
+  NOT manage performance reviews, financial data, or system configuration.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal
+  - Admin Flutter App
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as Operations Executive.
+Step 2: Verify navigation: Dashboard / Service Requests / Technicians / More.
+Step 3: Verify no access to: Finance, Billing, System Configuration.
+
+=== MODULE 2: SERVICE REQUEST QUEUE ===
+
+Step 1: Go to Service Request List.
+Step 2: Filter: Status = "Pending Assignment" | Zone = Zone A.
+Step 3: Select the first unassigned SR. Click "Assign Technician".
+Step 4: The Assignment Panel should open showing:
+         - Available technicians for Zone A
+         - Skill match indicator (green tick = matched)
+         - Current job count per technician
+Step 5: Assign Test Technician One. Confirm.
+Step 6: Verify SR status changes to "Scheduled".
+Step 7: Verify technician receives push notification of new job.
+
+=== MODULE 3: RESCHEDULING ===
+
+Step 1: Open any "Scheduled" SR.
+Step 2: Click "Reschedule".
+Step 3: Select a new date: 2 days from today.
+Step 4: Select a new time slot: Morning (8-12).
+Step 5: Choose reason: "Customer Request".
+Step 6: Toggle "Notify Customer" ON. Confirm reschedule.
+Step 7: Verify the SR Timeline shows a reschedule entry with reason and timestamp.
+Step 8: Verify customer WhatsApp notification is sent.
+
+=== MODULE 4: CANCELLATION ===
+
+Step 1: Open a "Pending Assignment" SR (do NOT use an active or completed one).
+Step 2: Click "Cancel SR".
+Step 3: Select reason: "Duplicate SR". Confirm.
+Step 4: Verify SR status changes to "Cancelled".
+Step 5: Verify a cancellation entry appears in the SR Timeline.
+Step 6: Try to re-open or edit a cancelled SR → must be restricted.
+
+=== MODULE 5: DISPATCH BOARD ===
+
+Step 1: Go to the Dispatch screen (or Scheduling Board Day View).
+Step 2: Verify unassigned SRs appear in the left queue.
+Step 3: Verify the technician availability board appears on the right.
+Step 4: Drag an unassigned SR to Test Technician One's column for tomorrow 10 AM.
+Step 5: Verify conflict detection: if there is another job at 10 AM → RED warning.
+Step 6: Resolve conflict by adjusting to 2 PM. Confirm.
+
+=== MODULE 6: AMC VISIT SCHEDULING ===
+
+Step 1: Go to AMC Auto-Schedule Review Board.
+Step 2: Filter: Unassigned AMC visits for next 7 days.
+Step 3: Select all unassigned AMC visits for Zone A.
+Step 4: Click "Bulk Assign" → assign to Test Technician One.
+Step 5: Verify each AMC visit SR is now "Scheduled".
+
+EXPECTED OUTCOME:
+  - Can assign, reschedule, and dispatch technicians efficiently.
+  - Can cancel SRs with reason logging.
+  - Cannot access financials, customer payment data, or system configuration.
+
+
+================================================================================
+ROLE 05 — CUSTOMER SUPPORT EXECUTIVE
+================================================================================
+
+WHAT IS THIS ROLE?
+  CS Executive is the first point of contact for customers. They create SRs,
+  manage customer records, handle support tickets, and communicate with customers.
+  They do NOT access financial P&L or technician operational details.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal (primary)
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as CS Executive.
+Step 2: Verify navigation: Dashboard / Service Requests / Customers / Support Tickets.
+Step 3: Verify no access to: Finance, Billing P&L, System Configuration.
+
+=== MODULE 2: CREATE SERVICE REQUEST ===
+
+Step 1: A customer calls in. CS Executive creates a new SR.
+Step 2: Go to Service Requests → Create SR.
+Step 3: Fill form:
+         Customer  : Search "Arjun Sharma" (test customer)
+         Service   : AC Repair → Cooling Issue
+         Equipment : Daikin 1.5 Ton Split AC
+         Location  : Customer's registered address
+         Urgency   : Normal
+         Requested Date: Tomorrow | Time: Morning (8-12)
+         Special Instructions: "First floor, call before arriving"
+Step 4: Save. Verify SR number is auto-generated (e.g., SR-20250001).
+Step 5: Verify a WhatsApp booking confirmation is sent to the customer.
+Step 6: Verify the SR appears in the Service Request List with "Pending Assignment".
+
+=== MODULE 3: CUSTOMER 360 VIEW ===
+
+Step 1: Go to Customer Management → Customer List.
+Step 2: Search "Arjun Sharma" by name or phone 9000000001.
+Step 3: Click to open the Customer 360 View.
+Step 4: Verify all blocks load correctly:
+         a) Identity Block: Name, Type, Phone, Email, Customer Since
+         b) Addresses Block: All registered addresses with zone badge
+         c) Equipment Register: All AC units registered
+         d) AMC Summary: Active contract (if enrolled) or "Not Enrolled"
+         e) Service Request History: All past SRs listed
+         f) Invoice Summary: Outstanding amount (if any)
+         g) Support Tickets: Open tickets listed
+         h) Communication Preferences: Channel toggles
+Step 5: Click on any SR in the history → verify it opens the SR Detail.
+Step 6: Click on any Equipment card → verify equipment detail with service history.
+
+=== MODULE 4: ADD CUSTOMER NOTES ===
+
+Step 1: Still in Customer 360 View → go to Customer Notes section.
+Step 2: Click "Add Note".
+Step 3: Type: "Customer prefers morning slots only. Has 2 Daikin units."
+Step 4: Save. Verify note appears with author name and timestamp.
+Step 5: Verify this note is NOT visible to the customer in their portal.
+
+=== MODULE 5: SUPPORT TICKET MANAGEMENT ===
+
+Step 1: Go to Support Tickets.
+Step 2: Verify tickets are sorted: Escalated first, then by creation date.
+Step 3: Create a new ticket (on behalf of a customer calling in):
+         Customer: Arjun Sharma
+         Category: Booking Issue
+         Subject: Technician did not arrive at scheduled time
+         Description: (full description)
+         Priority: High
+         Link to SR: Select the SR created in Module 2
+Step 4: Save. Verify ticket number is generated.
+Step 5: Open the ticket. Click "Reply":
+         Use template: "Booking Issue" template
+         Customize the message
+         Send → verify customer receives notification.
+Step 6: Escalate the ticket:
+         Reason: Customer Complaint
+         Escalate To: Operations Manager
+Step 7: Verify Operations Manager receives an escalation notification.
+Step 8: Resolve the ticket: Change status to "Resolved". Confirm.
+
+=== MODULE 6: CUSTOMER COMMUNICATION ===
+
+Step 1: Go to a customer profile → open Communication Panel.
+Step 2: Select Channel: WhatsApp
+Step 3: Select Template: "Appointment Reminder"
+Step 4: Preview the message with merge tags filled.
+Step 5: Send. Verify delivery status shows "Delivered" in the communication log.
+Step 6: Go to SR Detail → open Communication Log Block.
+Step 7: Verify the manual communication is logged here too.
+
+=== MODULE 7: CREATE FOLLOW-UP SR ===
+
+Step 1: Open a completed SR.
+Step 2: Click "Create Follow-up SR".
+Step 3: Verify customer, equipment, and location are pre-filled.
+Step 4: Add new service type: AC Cleaning.
+Step 5: Save. Verify the follow-up SR references the original SR.
+
+EXPECTED OUTCOME:
+  - CS Executive can create and manage SRs for all customer scenarios.
+  - Full 360 customer visibility.
+  - Support tickets are managed and escalated correctly.
+  - Financial P&L and system config are NOT accessible.
+
+
+================================================================================
+ROLE 06 — TECHNICIAN
+================================================================================
+
+WHAT IS THIS ROLE?
+  Technician is a certified field professional who performs AC service work.
+  They only see THEIR OWN assigned jobs. They use the FLUTTER ADMIN MOBILE APP.
+
+PLATFORMS TO TEST ON:
+  - Admin Flutter App (on Android device or emulator)
+
+PRE-CONDITION:
+  - At least 1 SR must be assigned to Test Technician One.
+  - Technician logs in using Employee ID + PIN.
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Open the Coolzo Admin Flutter App.
+Step 2: Select login mode: "Employee ID + PIN".
+Step 3: Enter: Employee ID = TECH001 | PIN = 1234.
+Step 4: Verify navigation tabs: My Jobs / Job Detail / Attendance / My Profile.
+Step 5: Verify the technician CANNOT see tabs for: Finance, Customers, Configuration.
+
+=== MODULE 2: TECHNICIAN HOME DASHBOARD ===
+
+Step 1: On the Home screen, verify:
+         - Today's job count is shown.
+         - Next job card is visible with customer address and scheduled time.
+         - Attendance status: "Not Checked In" (if not yet checked in).
+Step 2: Tap "Check In" (attendance from base).
+         - GPS coordinates are captured.
+         - Verify status changes to "Checked In".
+Step 3: Verify the home screen updates to show "Checked In" status.
+
+=== MODULE 3: MY JOBS LIST ===
+
+Step 1: Go to My Jobs tab.
+Step 2: Verify the assigned SR appears in the job list.
+Step 3: Verify the job card shows:
+         - SR Number
+         - Service Type (AC Repair - Cooling Issue)
+         - Customer Address (tap-to-navigate)
+         - Scheduled Time
+         - Status badge: "Scheduled"
+Step 4: Verify NO other technician's jobs are visible.
+
+=== MODULE 4: JOB DETAIL ===
+
+Step 1: Tap on the assigned job.
+Step 2: Verify the Job Detail screen shows:
+         - Customer Name (first name only — NOT full account details)
+         - Service Address (tap opens navigation app)
+         - Equipment: Daikin 1.5 Ton Split
+         - Service Type: AC Repair - Cooling Issue
+         - Special Instructions: "First floor, call before arriving"
+         - Customer Phone (tap-to-call button)
+         - Scheduled Time
+Step 3: Tap "Customer Phone" → verify one-tap dialing initiates a call.
+
+=== MODULE 5: JOB WORKFLOW — STEP BY STEP ===
+
+Step 5a: NAVIGATE TO JOB
+  - Tap "Navigate to Job".
+  - Verify the device navigation app opens with customer address pre-loaded.
+  - Verify SR status updates to "En Route" in the system.
+  - Verify customer receives WhatsApp: "Technician is on the way."
+
+Step 5b: GPS CHECK-IN (ARRIVED)
+  - Physically be at or simulate the customer address location.
+  - Tap "Arrived" button.
+  - Verify GPS check-in captures coordinates.
+  - POSITIVE TEST: If within 150 meters → check-in succeeds. Status = "Arrived".
+  - NEGATIVE TEST: Simulate location 500 meters away → verify WARNING dialog
+    appears: "You appear to be outside the customer location. Proceed anyway?"
+    (Override must be logged for manager review.)
+  - Verify customer receives push notification: "Technician has arrived."
+
+Step 5c: START WORK
+  - Tap "Start Work".
+  - Verify status changes to "In Progress".
+  - Verify job start time is recorded.
+  - Verify customer can see "In Progress" status in their tracking screen.
+
+Step 5d: WORK PROGRESS CHECKLIST
+  - Open the Work Progress Checklist.
+  - Verify checklist is pre-populated for "AC Repair":
+    Example items: Inspect filters, Check refrigerant pressure, Test compressor, etc.
+  - Mark each mandatory item as complete (checkbox).
+  - NEGATIVE TEST: Leave a mandatory item unchecked → verify submit is blocked later.
+  - Mark all items complete.
+
+Step 5e: PARTS REQUEST (if parts are needed)
+  - Tap "Request Parts".
+  - Search for part: "Air Filter" → select from catalog.
+  - Quantity: 1. Add note: "Old filter damaged."
+  - Submit.
+  - Verify Store Manager receives the parts request notification.
+  - Verify status: "Pending Approval" visible to technician.
+  - Wait for Store Manager to approve (test with Store Manager role — Section B.8).
+  - After approval: Verify technician receives push notification "Parts Approved".
+
+Step 5f: ESTIMATE CREATION (if additional work needed)
+  - Tap "Create Estimate".
+  - Add labor line: "Compressor capacitor replacement" | Qty: 1 | Price: Rs. 350.
+  - Add part line: "Capacitor 35MFD" | Qty: 1 | Price: Rs. 180.
+  - Total: Rs. 530 (before tax).
+  - Submit estimate.
+  - Verify customer receives WhatsApp with itemized estimate and Approve/Reject buttons.
+  - From the customer side: Approve the estimate.
+  - Verify technician sees estimate status change to "Approved".
+
+Step 5g: JOB REPORT SUBMISSION
+  - Tap "Job Report".
+  - Fill mandatory fields:
+    Equipment Condition Found: Fair
+    Issues Identified: Low refrigerant, faulty capacitor
+    Action Taken: Replaced capacitor, topped up gas
+    Recommendation: Full gas refill recommended in 6 months
+  - Parts Used: Capacitor 35MFD, Qty 1, Rs. 180
+  - PHOTO CAPTURE (minimum 2 required):
+    a) Take "Before-Work" photo → upload.
+    b) Take "After-Work" photo → upload.
+    c) Verify photo thumbnails appear in the report.
+    d) NEGATIVE TEST: Try to submit with only 1 photo → verify blocked.
+  - Verify all mandatory checklist items are checked.
+  - NEGATIVE TEST: Try submitting without checklist complete → verify error.
+
+Step 5h: CUSTOMER SIGNATURE
+  - Tap "Capture Customer Signature".
+  - Hand the device to customer (or tester simulating customer).
+  - Customer signs on the screen.
+  - Verify signature is captured with timestamp.
+  - Customer name: auto-filled from job.
+  - Tap "Confirm Signature".
+
+Step 5i: PAYMENT COLLECTION
+  - Payment screen shows the invoice: Rs. 349 (service) + Rs. 180 (capacitor) + Tax.
+  - If COD: Tap "Collect Cash" → enter amount collected → confirm.
+  - If Online: Tap "Send Payment Link" → verify WhatsApp payment link sent to customer.
+  - Verify payment method and amount are recorded.
+
+Step 5j: JOB COMPLETION
+  - Tap "Complete Job".
+  - Confirmation dialog: "Are you sure? This will finalize the job and generate invoice."
+  - Confirm.
+  - Verify status changes to "Completed".
+  - Verify customer receives job completion notification with report and invoice link.
+  - Verify feedback request is QUEUED (will be sent 2 hours after completion).
+
+=== MODULE 6: JOB HISTORY ===
+
+Step 1: Go to Job History screen.
+Step 2: Verify the completed job appears in the list.
+Step 3: Tap to open it → verify submitted report, photos, and signature are visible.
+Step 4: Verify technician CANNOT edit a submitted report.
+
+=== MODULE 7: ATTENDANCE ===
+
+Step 1: Go to Attendance module.
+Step 2: Monthly calendar view → verify today shows "Present".
+Step 3: Submit Leave Request:
+         Type: Casual Leave | Date: 3 days from now | Reason: Personal.
+Step 4: Verify leave shows "Pending Approval" on the calendar.
+Step 5: Operations Manager approves the leave → verify calendar updates to "Leave Approved".
+
+=== MODULE 8: MY PROFILE ===
+
+Step 1: Go to My Profile tab.
+Step 2: Verify displayed information: Name, Employee ID, Zone, Skills, Ratings.
+Step 3: Verify technician CANNOT see other technicians' data.
+Step 4: Test Change PIN: Enter current PIN → new PIN → confirm.
+
+EXPECTED OUTCOME:
+  - Technician sees only their own assigned jobs.
+  - Complete guided workflow from depart → check-in → report → payment → completion.
+  - Photos and signature are captured and uploaded.
+  - Job report cannot be submitted without minimum 2 photos and full checklist.
+  - Financial details beyond their job's invoice are NOT visible.
+
+
+================================================================================
+ROLE 07 — HELPER / FIELD ASSISTANT
+================================================================================
+
+WHAT IS THIS ROLE?
+  Helper assists the lead Technician on-site. They see ONLY the job they are
+  attached to. They have a simplified app view with no financial access.
+
+PLATFORMS TO TEST ON:
+  - Admin Flutter App (simplified view)
+
+PRE-CONDITION:
+  - Helper must be assigned to Test Technician One's job for today.
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Open Admin Flutter App.
+Step 2: Login: Employee ID = HELPER001 | PIN = 5678.
+Step 3: Verify tabs: My Jobs / Attendance / My Profile ONLY.
+Step 4: Verify NO access to: Parts request full catalog, customer financials,
+        other jobs, reports.
+
+=== MODULE 2: CURRENT JOB VIEW ===
+
+Step 1: Go to My Jobs.
+Step 2: Verify ONLY today's attached job is visible (the one shared with Technician).
+Step 3: Open the job.
+Step 4: Verify Helper sees:
+         - Job address (tap-to-navigate)
+         - Task checklist items ASSIGNED to helper specifically
+         - Photo upload button
+         - Check-In / Check-Out controls
+Step 5: Verify Helper does NOT see:
+         - Customer full account details
+         - Invoice amount
+         - Parts ordering full functionality
+         - Customer's payment information
+
+=== MODULE 3: TASK COMPLETION ===
+
+Step 1: Tap "Check In" → verify GPS recorded.
+Step 2: Complete task checklist items assigned to helper.
+Step 3: Upload a photo (label: "During Work").
+Step 4: Verify photo uploads successfully.
+Step 5: Tap "Check Out" when done.
+
+=== MODULE 4: ATTENDANCE ===
+
+Step 1: Verify same attendance module as Technician.
+Step 2: Daily check-in and check-out work correctly.
+
+EXPECTED OUTCOME:
+  - Helper sees only the job they are attached to.
+  - Can complete tasks, upload photos, and check in/out.
+  - No financial or customer account access.
+
+
+================================================================================
+ROLE 08 — INVENTORY / STORE MANAGER
+================================================================================
+
+WHAT IS THIS ROLE?
+  Store Manager manages the parts catalog, stock levels, processes technician
+  parts requests, and manages purchase orders. They do NOT see customer data
+  or financial P&L.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal
+  - Admin Flutter App
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as Store Manager.
+Step 2: Verify navigation: Dashboard / Parts Catalog / Requests / Purchase Orders.
+Step 3: Verify no access to: Customer 360, SR assignment, Financial reports.
+
+=== MODULE 2: INVENTORY DASHBOARD ===
+
+Step 1: Go to Inventory Dashboard.
+Step 2: Verify:
+         - Total SKUs count
+         - Low Stock alert count (amber)
+         - Out of Stock count (red)
+         - Pending Parts Requests count
+         - Open POs count
+
+=== MODULE 3: PARTS CATALOG MANAGEMENT ===
+
+Step 1: Go to Parts Catalog.
+Step 2: Click "Add New Part":
+         Part Code     : AC-CAP-35
+         Part Name     : Capacitor 35 MFD
+         Category      : Electrical Components
+         Compatible    : Daikin, LG, Samsung
+         Unit Cost     : Rs. 180
+         Min Stock     : 10
+         Reorder Qty   : 20
+         Storage Bin   : Rack A-3
+Step 3: Save. Verify part appears in catalog.
+Step 4: Search for the part by name → verify instant search results.
+Step 5: Edit Part: Change unit cost to Rs. 195. Save.
+Step 6: Verify stock movement log shows no entry (cost update only, not a stock move).
+
+=== MODULE 4: PROCESS PARTS REQUESTS ===
+
+Step 1: Go to Parts Requests Queue.
+Step 2: Find the request submitted by Test Technician One (from Role 06 testing).
+Step 3: Open the request detail:
+         - Verify: Technician name, SR number, parts requested, quantities.
+         - Verify stock availability check per requested part.
+Step 4: APPROVE the request:
+         - Confirm quantities to dispatch.
+         - Click "Approve & Issue".
+Step 5: Verify:
+         - Stock quantity for "Capacitor 35 MFD" decreases by 1.
+         - Technician receives push notification "Parts Approved".
+         - Stock movement ledger shows an "OUT" entry linked to the SR.
+Step 6: NEGATIVE TEST — Try approving a part that is out of stock:
+         - Set stock to 0 for a test part.
+         - Receive a technician request for that part.
+         - Attempt approval → verify "Insufficient Stock" warning.
+
+Step 7: PARTIAL APPROVE TEST:
+         - For a request with 2 different parts, one in stock and one not:
+         - Click "Partial Approve" → approve only the available part.
+         - Technician should be notified of partial approval.
+
+=== MODULE 5: PURCHASE ORDER MANAGEMENT ===
+
+Step 1: Go to Purchase Orders → Create New PO.
+Step 2: Fill:
+         Supplier: Test Supplier (create manually or select from list)
+         Expected Delivery: 5 days from today
+         Line Items:
+           - Capacitor 35 MFD | Qty: 20 | Unit Price: Rs. 160
+           - Air Filter 1.5T  | Qty: 10 | Unit Price: Rs. 85
+Step 3: Save as Draft. Reopen and verify all data is preserved.
+Step 4: Submit PO. Verify PO number is generated.
+Step 5: Mark PO as "Received" (simulate delivery):
+         - Qty Received: 20 Capacitors, 10 Air Filters (full receipt)
+         - Verify stock levels update automatically.
+         - Verify stock movement ledger shows "IN" entries.
+
+=== MODULE 6: LOW STOCK ALERTS ===
+
+Step 1: Go to Low Stock Alerts.
+Step 2: Verify parts below reorder level appear in the list.
+Step 3: Click "Create PO from Alerts" → verify PO is pre-populated with
+        all low-stock items and suggested quantities.
+
+=== MODULE 7: INVENTORY REPORTS ===
+
+Step 1: Go to Inventory Reports.
+Step 2: Generate "Parts Consumption Report" for this month.
+Step 3: Verify it shows parts used from technician job completions.
+Step 4: Export to CSV. Verify download.
+
+EXPECTED OUTCOME:
+  - Store Manager processes all parts requests promptly.
+  - Stock is automatically tracked on approval and PO receipt.
+  - Low stock alerts enable proactive replenishment.
+  - No customer or financial data access.
+
+
+================================================================================
+ROLE 09 — BILLING / ACCOUNTS EXECUTIVE
+================================================================================
+
+WHAT IS THIS ROLE?
+  Billing Executive manages invoices, payments, discounts, credit notes, and
+  accounts receivable. They are the revenue collection team. They do NOT access
+  technician operational details or customer PII beyond billing info.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal (primary)
+
+PRE-CONDITION:
+  - At least one job must be in "Completed" status (from Technician testing).
+  - Auto-invoice should have been generated for that job.
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as Billing Executive.
+Step 2: Verify navigation: Dashboard / Invoices / Payments / Reports.
+Step 3: Verify no access to: Live Job Map, Technician GPS, System Configuration.
+
+=== MODULE 2: INVOICE LIST ===
+
+Step 1: Go to Invoice List.
+Step 2: Verify the auto-generated invoice from the completed test job is visible.
+Step 3: Filter: Status = "Unpaid" → verify it appears.
+Step 4: Check the outstanding total banner at the top — verify amber highlight.
+Step 5: Search by customer name "Arjun Sharma" → verify invoice appears.
+
+=== MODULE 3: INVOICE DETAIL ===
+
+Step 1: Click on the test invoice.
+Step 2: Verify Invoice Detail shows:
+         - Invoice Number (format: CZ/YYYY/MM/0001)
+         - Issue Date / Due Date / Payment Status
+         - Linked SR Number (clickable)
+         - Technician Name
+         - Customer Name and Contact
+         - Itemized Line Items:
+             a) AC Repair - Labor       : Rs. 499
+             b) Capacitor 35 MFD (x1)  : Rs. 180
+             c) GST 18% on Labor       : Rs. 89.82
+             d) GST 18% on Parts       : Rs. 32.40
+             e) Net Payable            : Rs. 801.22
+         - Payment Status: Unpaid
+Step 3: Verify coupon discount (if applied at booking) shows as a separate line.
+
+=== MODULE 4: EDIT INVOICE ===
+
+Step 1: Click "Edit Invoice" (available while Unpaid).
+Step 2: Adjust labor charge: from Rs. 499 to Rs. 450. Reason: "Test adjustment".
+Step 3: Save. Verify invoice recalculates total and tax correctly.
+Step 4: Verify edit history is logged with agent name and timestamp.
+Step 5: NEGATIVE TEST — Try editing an invoice that is already Paid → must be blocked.
+
+=== MODULE 5: APPLY DISCOUNT ===
+
+Step 1: Open the test invoice.
+Step 2: Click "Apply Discount".
+Step 3: Apply: Manual Discount | Rs. 50 | Reason: "Test goodwill discount".
+Step 4: Verify invoice total reduces by Rs. 50.
+Step 5: NEGATIVE TEST — Apply a discount above the configured threshold
+        (e.g., > 20%) → verify "Finance Manager Approval Required" message appears.
+Step 6: Try coupon code TESTQC10 → verify 10% discount is applied.
+
+=== MODULE 6: MARK AS PAID (MANUAL) ===
+
+Step 1: Open the test invoice.
+Step 2: Click "Mark as Paid".
+Step 3: Enter:
+         Payment Date   : Today
+         Method         : Cash
+         Amount         : Rs. 801.22 (full amount)
+         Reference No   : CASH001
+Step 4: Confirm. Verify:
+         - Invoice status changes to "Paid".
+         - Receipt is auto-generated.
+         - Customer receives "Payment Received" WhatsApp notification.
+
+=== MODULE 7: ISSUE CREDIT NOTE ===
+
+Step 1: Open any Paid invoice (create a second test one if needed).
+Step 2: Click "Issue Credit Note".
+Step 3: Select credit reason: "Service Failure".
+Step 4: Credit amount: Partial — Rs. 100.
+Step 5: Confirm. Verify:
+         - Credit note number is generated.
+         - It is linked to the original invoice.
+         - Customer outstanding balance is reduced by Rs. 100.
+Step 6: NEGATIVE TEST — Try issuing credit above the threshold without
+        Finance Manager approval → verify approval request is triggered.
+
+=== MODULE 8: ACCOUNTS RECEIVABLE ===
+
+Step 1: Go to Accounts Receivable Dashboard.
+Step 2: Verify aging buckets:
+         0-30 days: Rs. X
+         31-60 days: Rs. X
+         61-90 days: Rs. X
+         90+ days: Rs. X (red alert)
+Step 3: Click the 0-30 bucket → verify it filters the invoice list.
+Step 4: Select an overdue invoice → click "Send Reminder".
+Step 5: Verify WhatsApp reminder is sent to the customer with invoice link.
+Step 6: Log a follow-up: "Called customer. Promised payment by Friday."
+Step 7: Verify follow-up log is saved against the invoice.
+
+=== MODULE 9: CORPORATE CONSOLIDATED INVOICE ===
+
+Step 1: Go to Invoice → Create Consolidated Invoice (for a corporate customer).
+Step 2: Select corporate account. Select billing period: This Month.
+Step 3: Verify all SRs for the month are listed as line items.
+Step 4: Generate invoice → verify PDF with consolidated format downloads.
+
+=== MODULE 10: SEND INVOICE TO CUSTOMER ===
+
+Step 1: Open any unpaid invoice.
+Step 2: Click "Send Invoice".
+Step 3: Select: WhatsApp + Email.
+Step 4: Verify preview shows correct content.
+Step 5: Send. Verify delivery log updates with "Delivered" status.
+
+EXPECTED OUTCOME:
+  - Auto-invoice is generated correctly after job completion.
+  - Billing team can edit, discount, and credit invoices.
+  - Manual payments are recorded with receipts.
+  - AR aging is tracked and follow-up actions are logged.
+  - Access to operational job details and financial P&L is restricted.
+
+
+================================================================================
+ROLE 10 — FINANCE MANAGER
+================================================================================
+
+WHAT IS THIS ROLE?
+  Finance Manager has strategic oversight of all revenue, collections, and
+  financial reporting. They approve high-value discounts and credit notes,
+  review financial dashboards, and export data for accounting.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal (primary)
+  - Admin Flutter App (dashboard view)
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as Finance Manager.
+Step 2: Verify navigation: Dashboard / Invoices / Payments / Reports.
+Step 3: Verify access to financial configuration (tax, payment terms, pricing).
+Step 4: Verify NO access to: Live Job Map, Dispatch Board, Technician GPS.
+
+=== MODULE 2: FINANCE MANAGER DASHBOARD ===
+
+Step 1: Open Finance Dashboard.
+Step 2: Verify all KPI tiles load:
+         - Revenue Today / This Week / This Month / YTD
+         - Collection Rate %
+         - Outstanding Receivables Total
+         - Average Days-to-Collect
+         - New Invoices Today
+Step 3: Tap/click "Revenue This Month" → verify drill-down shows invoice list.
+Step 4: Verify Month-over-Month trend line chart renders correctly.
+Step 5: Verify "Revenue by Service Type" pie/bar chart renders correctly.
+Step 6: Verify "Top 5 Customers by Revenue" list is shown.
+
+=== MODULE 3: APPROVE DISCOUNT OVERRIDE ===
+
+Step 1: Billing Executive attempted a high-value discount → approval request exists.
+Step 2: Finance Manager receives notification of pending approval.
+Step 3: Go to the approval queue (Invoices → Pending Approvals or notification).
+Step 4: Review the discount: customer, reason, amount.
+Step 5: APPROVE: enter approval note. Confirm.
+Step 6: Verify the discount is applied to the invoice.
+Step 7: Verify Billing Executive is notified of approval.
+Step 8: REJECT: try a different approval → reject with reason.
+Step 9: Verify Billing Executive receives rejection notification.
+
+=== MODULE 4: PAYMENT RECONCILIATION ===
+
+Step 1: Go to Payment Gateway Reconciliation screen.
+Step 2: Verify any unmatched online payments are listed.
+Step 3: Manually match an unmatched payment to an invoice.
+Step 4: Verify invoice status updates to "Paid" and receipt is generated.
+
+Step 5: Go to COD Reconciliation.
+Step 6: Find cash payments collected by technicians.
+Step 7: Click "Verify" → confirm cash received from technician.
+Step 8: Verify invoice marks as Paid and receipt generates.
+
+=== MODULE 5: PROCESS REFUND ===
+
+Step 1: Go to Payments → find a completed payment.
+Step 2: Click "Process Refund".
+Step 3: Refund Amount: Rs. 100 (partial).
+Step 4: Reason: Test refund.
+Step 5: Refund Method: Original payment method.
+Step 6: Confirm. Finance Manager approval logged.
+Step 7: Verify linked credit note is auto-created.
+
+=== MODULE 6: FINANCIAL REPORTS ===
+
+Step 1: Go to Reports Hub.
+
+Test A — Revenue Analytics:
+  - Date range: This month.
+  - Verify line chart shows daily revenue.
+  - Verify "by Service Type" bar chart renders.
+  - Verify "by Zone" table renders.
+  - Export data to CSV → verify download.
+
+Test B — Tax Liability Report:
+  - Generate for this month.
+  - Verify GST output tax is correctly calculated.
+  - Verify HSN/SAC code breakdown is shown.
+  - Export for GST filing.
+
+Test C — Financial Summary Report:
+  - Period: This Month.
+  - Verify: Total Revenue, Discounts, Collections, Outstanding, Credit Notes.
+  - Export to Excel. Verify file opens correctly.
+
+Test D — Collection Efficiency Report:
+  - Verify collection rate %.
+  - Verify payment method breakdown.
+
+Test E — Discount & Coupon Usage Report:
+  - Verify coupon TESTQC10 usage appears.
+  - Verify total discount value given.
+
+=== MODULE 7: BAD DEBT MANAGEMENT ===
+
+Step 1: Find an invoice overdue by 90+ days (create test scenario if needed).
+Step 2: Click "Flag as Bad Debt". Enter reason.
+Step 3: Verify: Invoice removed from AR aging, status = "Bad Debt".
+Step 4: Verify customer risk flag is automatically set to "High".
+Step 5: Verify Finance Manager approval is logged in audit trail.
+
+EXPECTED OUTCOME:
+  - Finance Manager sees full financial picture of the business.
+  - Can approve high-value discounts and process refunds.
+  - All financial reports are generated and exported correctly.
+  - Access to operational job details (GPS, dispatch) is restricted.
+
+
+================================================================================
+ROLE 11 — MARKETING MANAGER
+================================================================================
+
+WHAT IS THIS ROLE?
+  Marketing Manager manages website content, promotional campaigns, coupons,
+  and customer communication campaigns. They do NOT access operational or
+  financial data.
+
+PLATFORMS TO TEST ON:
+  - Admin Web Portal (primary)
+
+=== MODULE 1: AUTHENTICATION ===
+
+Step 1: Log in as Marketing Manager.
+Step 2: Verify navigation: Dashboard / CMS / Promotions / Analytics.
+Step 3: Verify no access to: Service Requests, Customer Data, Billing, Finance.
+
+=== MODULE 2: WEBSITE CMS MANAGEMENT ===
+
+Step A — Homepage Banners:
+  Step 1: Go to CMS → Homepage Banners.
+  Step 2: Click "Create Banner".
+  Step 3: Fill:
+           Headline     : "Beat the Heat This Summer — Book Now!"
+           Sub-text     : "Certified AC Service Starting Rs. 349"
+           CTA Text     : "Book Now"
+           CTA Link     : /booking
+           Activation   : Today
+           Deactivation : 30 days from today
+  Step 4: Save. Open the Customer Website homepage.
+  Step 5: Verify the new banner appears in the hero rotation.
+  Step 6: Verify CTA button routes to the booking wizard.
+
+Step B — Service Descriptions:
+  Step 1: Go to CMS → Service Descriptions.
+  Step 2: Select "AC Cleaning".
+  Step 3: Edit the website-facing description using the rich text editor.
+  Step 4: Save. Open the AC Cleaning detail page on the website.
+  Step 5: Verify updated description is live.
+
+Step C — FAQ Management:
+  Step 1: Go to CMS → FAQ Management.
+  Step 2: Add a new FAQ:
+           Category: Booking
+           Question: "Can I book same-day service?"
+           Answer  : "Yes, same-day slots are available until 4 hours before the slot."
+  Step 3: Save. Verify it appears on the Contact/Support page FAQ section.
+
+Step D — Blog / Article Manager:
+  Step 1: Go to CMS → Blog Manager.
+  Step 2: Create a new article:
+           Title   : "5 Signs Your AC Needs a Gas Refill"
+           Category: Maintenance Tips
+           Body    : (Write 3-4 paragraphs)
+           Status  : Published
+  Step 3: Save. Verify article appears in the Blog Listing on the website.
+
+=== MODULE 3: COUPON & DISCOUNT MANAGER ===
+
+Step 1: Go to Promotions → Coupon Manager.
+Step 2: Verify TESTQC10 is listed with usage count.
+Step 3: Create a new coupon:
+         Code      : MONSOON2025
+         Type      : Flat Amount
+         Discount  : Rs. 100
+         Applicable: AC Cleaning only
+         Expiry    : 60 days from today
+         Limit     : 100 uses
+         Min Order : Rs. 349
+Step 4: Save. Apply this coupon on a test booking → verify Rs. 100 discount.
+Step 5: Disable coupon TESTQC10 → verify it fails when applied on booking.
+
+=== MODULE 4: PUSH NOTIFICATION CAMPAIGN ===
+
+Step 1: Go to Promotions → Push Notification Campaign.
+Step 2: Create a campaign:
+         Audience : All customers with no booking in 90+ days
+         Message  : "We miss you! Book AC service now and get 10% off."
+         Schedule : Send in 1 hour (test scheduling)
+Step 3: Save. Verify the campaign appears in the scheduled list.
+
+=== MODULE 5: ANALYTICS ===
+
+Step 1: Go to Analytics Dashboard.
+Step 2: Verify: Website visits, Bookings initiated, Bookings completed, Coupon usage.
+Step 3: Verify customer acquisition metrics are visible.
+Step 4: Try to access Revenue P&L data → must be blocked.
+
+EXPECTED OUTCOME:
+  - Marketing Manager controls all website content without developer.
+  - Coupons are created, tracked, and can be disabled instantly.
+  - Push campaigns are scheduled to audience segments.
+  - Operational and financial data is NOT accessible.
+
+
+================================================================================
+ROLE 12 — CUSTOMER (REGISTERED USER)
+================================================================================
+
+WHAT IS THIS ROLE?
+  Registered Customer uses the Customer Website (authenticated zone) and the
+  Customer Flutter Mobile App to book, track, pay, and manage their AC service.
+
+PLATFORMS TO TEST ON:
+  - Customer Website (Angular SPA — authenticated zone)
+  - Customer Flutter Mobile App
+
+=== MODULE 1: REGISTRATION & LOGIN ===
+
+Step 1 — REGISTRATION:
+  a) Open Customer Website → click "Register".
+  b) Fill: Full Name = "Arjun Sharma" | Email | Phone = 9000000001.
+  c) Click "Send OTP" → enter OTP (check test WhatsApp or email).
+  d) Create password. Accept T&C. Click "Create Account".
+  e) Verify: Account is created. Welcome notification sent.
+  f) Verify: Redirected to Customer Dashboard.
+
+Step 2 — LOGIN:
+  a) Log out. Click "Login".
+  b) Test Phone + OTP login.
+  c) Test Email + Password login.
+  d) Test "Forgot Password" flow:
+     - Enter email → receive reset link → set new password → login.
+
+NEGATIVE TESTS:
+  - Register with existing phone number → duplicate error.
+  - Login with wrong OTP → "Invalid OTP" error.
+  - Login with wrong password → "Invalid credentials" error.
+
+=== MODULE 2: BOOKING WIZARD (6 STEPS) ===
+
+Step 1 — SERVICE SELECTION:
+  - Select "AC Repair" → then sub-type "Cooling Issue".
+  - Verify gold border appears on selected card.
+  - Continue button is disabled until selection is made.
+  - Click Continue → progress bar updates to Step 2 of 6.
+
+Step 2 — EQUIPMENT DETAILS:
+  - Brand: Daikin | Type: Split | Capacity: 1.5 Ton | Units: 1.
+  - Test "Select from my equipment" (if equipment registered) → pre-fills.
+  - Click Continue.
+
+Step 3 — SERVICE LOCATION:
+  - Enter Zone A address with PIN 500001.
+  - Verify zone availability shows green tick "Service available in your area".
+  - Test PIN 999999 (invalid zone) → verify "Service not available" message.
+  - Map pin preview shows correct location.
+  - Click Continue.
+
+Step 4 — DATE & TIME SLOT:
+  - Verify 7-day calendar strip shows available dates.
+  - Verify holiday dates are greyed out.
+  - Select tomorrow → Morning slot (8-12).
+  - Test Emergency Service toggle → verify surcharge notice appears.
+  - Click Continue.
+
+Step 5 — CONTACT INFO:
+  - Verify all fields are pre-filled from the logged-in account.
+  - Add special instructions: "Ring the doorbell twice."
+  - Apply coupon TESTQC10 → verify 10% discount shows with green tick.
+  - Apply invalid coupon → verify error message.
+
+Step 6 — SUMMARY & CONFIRM:
+  - Verify all booking details are correct.
+  - Verify estimated price range shown.
+  - Verify coupon discount shown with strikethrough original price.
+  - Accept T&C checkbox.
+  - Click "Confirm & Book".
+  - Verify loading state: "Securing your booking..."
+  - Verify success: animated checkmark, booking reference number.
+  - Verify WhatsApp booking confirmation received.
+
+=== MODULE 3: JOB TRACKER ===
+
+Step 1: Go to My Bookings → open the booking just created.
+Step 2: Verify job tracker status milestones:
+         Booked ✓ → Assigned → En Route → Arrived → In Progress → Completed
+Step 3: As Operations Executive assigns a technician to this SR:
+         - Verify customer sees status update to "Assigned".
+         - Verify Technician card appears: Name, Photo, Rating, Phone.
+         - Verify WhatsApp "Technician Assigned" notification received.
+Step 4: As Technician marks "En Route":
+         - Verify ETA display updates: "Arriving in approx. X minutes."
+Step 5: As Technician marks "Arrived":
+         - Verify status updates to "Arrived".
+Step 6: As Technician marks "In Progress":
+         - Verify status updates to "In Progress."
+Step 7: ESTIMATE APPROVAL:
+         - After technician submits estimate → verify customer sees estimate block.
+         - Estimate shows itemized table with Approve and Decline buttons.
+         - Click "Approve" → verify work order is triggered.
+         - Test "Decline" → verify technician is notified of decline.
+
+=== MODULE 4: MY BOOKINGS ===
+
+Step 1: Go to My Bookings → verify all tabs: All / Open / Completed / Cancelled.
+Step 2: Test search by SR number.
+Step 3: Test filter by date range.
+Step 4: Open completed booking → verify "View Service Report" button available.
+Step 5: Click "View Report" → verify the service report PDF opens/downloads.
+Step 6: Test "Reschedule" on an upcoming booking:
+         - Select new date and slot.
+         - Confirm → verify reschedule notification sent.
+Step 7: Test "Cancel" on a pending booking:
+         - Confirm cancellation.
+         - Verify status changes to "Cancelled".
+
+=== MODULE 5: MY AMC DASHBOARD ===
+
+Step 1: Go to My AMC.
+Step 2: If not enrolled: verify AMC upsell design with plan comparison.
+Step 3: Click "Enroll in AMC" → verify routing to AMC Plans page.
+Step 4: Select Standard AMC → "Enroll" → booking wizard opens with AMC pre-selected.
+Step 5: Complete enrollment.
+Step 6: Return to My AMC Dashboard and verify:
+         - Contract Name: Standard AMC
+         - Visit tracker: 0 of 4 used.
+         - Next Scheduled Visit: date shown.
+         - Visit History: empty.
+Step 7: Check AMC renewal CTA: only visible when < 30 days to expiry.
+
+=== MODULE 6: MY EQUIPMENT ===
+
+Step 1: Go to My Equipment.
+Step 2: Click "Add Equipment":
+         Brand: Daikin | Model: FTKF35TV | Type: Split | Capacity: 1.5 Ton
+         Installation Year: 2022 | Location: Living Room
+Step 3: Save. Verify equipment card appears.
+Step 4: Click equipment card → verify Equipment Detail Screen:
+         - All unit details
+         - Service history timeline (empty initially)
+         - Book Service for This Unit CTA
+Step 5: Tap "Book Service for This Unit" → verify booking wizard pre-fills
+        the equipment details.
+
+=== MODULE 7: MY INVOICES ===
+
+Step 1: Go to My Invoices.
+Step 2: Verify filter tabs: All / Unpaid / Paid / Overdue.
+Step 3: Open the test invoice → verify itemized breakdown.
+Step 4: Click "Pay Now":
+         - Payment gateway opens.
+         - Select UPI payment method.
+         - Complete test payment.
+         - Verify payment success screen with receipt download.
+Step 5: Download Receipt → verify branded PDF downloads correctly.
+Step 6: Verify invoice status updates to "Paid".
+
+=== MODULE 8: MY SUPPORT TICKETS ===
+
+Step 1: Go to My Support Tickets.
+Step 2: Click "Raise New Ticket":
+         Category: Technician Concern
+         Subject: Technician left without completing job
+         Description: Full description
+         Related Booking: Select the test booking
+         Attach: Upload a test photo
+Step 3: Submit. Verify ticket number generated.
+Step 4: Verify ticket appears in the list with "Open" status.
+Step 5: Open the ticket → verify chat-style interface.
+Step 6: CS Agent replies → verify reply appears in the conversation.
+Step 7: Rate the support: 4 stars.
+Step 8: Close ticket → verify status changes to "Closed".
+
+=== MODULE 9: MY PROFILE & ACCOUNT ===
+
+Step 1: Go to My Profile → edit full name. Save. Verify success toast.
+Step 2: Go to My Addresses:
+         - Add new address: Office, Zone B address.
+         - Set it as default.
+         - Edit → change label. Save.
+         - Verify next booking pre-fills this default address.
+Step 3: Go to Notification Preferences:
+         - Toggle OFF "Promotional Offers" → WhatsApp. Save.
+         - Verify no promotional WhatsApp messages sent.
+         - Toggle OFF "Booking Confirmations" → must be blocked (mandatory).
+
+=== MODULE 10: REVIEW & FEEDBACK ===
+
+Step 1: 2 hours after job completion: receive WhatsApp feedback request link.
+Step 2: Tap link → opens Review Submission screen (or Customer App).
+Step 3: Give 5-star rating.
+Step 4: Fill written review: "Excellent service, very professional technician."
+Step 5: Sub-ratings: Punctuality 5, Professionalism 5, Work Quality 5.
+Step 6: Would you recommend? Yes.
+Step 7: Submit. Verify "Thank you" confirmation screen.
+Step 8: Verify review appears in the Admin Portal → Feedback Management.
+
+EXPECTED OUTCOME:
+  - Customer can independently manage their complete service relationship.
+  - All flows (booking, tracking, payment, support) work without any phone call.
+  - Customer CANNOT see other customers' data.
+  - Financial data is limited to their own invoices and payments.
+
+
+================================================================================
+ROLE 13 — GUEST / WEBSITE VISITOR
+================================================================================
+
+WHAT IS THIS ROLE?
+  Guest is any unauthenticated user visiting the public website. They can browse,
+  explore, and complete a booking WITHOUT creating an account.
+
+PLATFORMS TO TEST ON:
+  - Customer Website (public zone — use incognito browser)
+
+=== MODULE 1: PUBLIC WEBSITE BROWSING ===
+
+Step 1: Open Customer Website in incognito browser (no login).
+Step 2: Verify Homepage loads with:
+         - Full-width hero section (deep navy background, gold CTA button)
+         - Trust strip (certification badges, services count, rating)
+         - Service category cards
+         - How It Works section (4 steps)
+         - Customer testimonials
+         - AMC highlight banner
+         - Promotional offer section
+         - App download CTA
+         - Footer with all links
+Step 3: Click "Book a Service" CTA → verify routing to Booking Wizard Step 1.
+
+=== MODULE 2: SERVICE DISCOVERY ===
+
+Step 1: Go to Services page.
+Step 2: Test filter chips: click "Repair" → verify only Repair services shown.
+Step 3: Click "Maintenance" → verify Cleaning and other maintenance services shown.
+Step 4: Search service name: "Gas" → verify Gas Refilling appears.
+Step 5: Click on "AC Repair" service card → verify Service Detail Page opens.
+Step 6: On Service Detail Page verify:
+         - What's Included list
+         - How It Works steps
+         - Duration badge and price info
+         - FAQ accordion (click to expand/collapse)
+         - "Book This Service" CTA
+Step 7: On Mobile: verify sticky bottom bar with "Book Now" is always visible.
+
+=== MODULE 3: AMC PLANS PAGE ===
+
+Step 1: Go to AMC Plans page.
+Step 2: Verify plan comparison table: Basic / Standard / Premium / Enterprise columns.
+Step 3: Verify "Most Popular" badge appears on Standard plan.
+Step 4: Click "Enroll" on any plan → verify routing to Booking Wizard with AMC pre-selected.
+
+=== MODULE 4: BLOG / REVIEWS / ABOUT ===
+
+Step 1: Go to Blog → verify article cards with categories.
+Step 2: Filter by "Maintenance Tips" → verify filtered results.
+Step 3: Click article → verify full article detail with read time and share button.
+Step 4: Go to Reviews page → verify aggregate rating displayed.
+Step 5: Filter reviews by "AC Cleaning" → verify filtered reviews.
+Step 6: Go to About Us → verify brand story, certifications, and trust numbers.
+Step 7: Go to Why Coolzo → verify comparison table loads correctly.
+
+=== MODULE 5: CONTACT PAGE ===
+
+Step 1: Go to Contact / Support page.
+Step 2: Verify:
+         - Phone number (tap-to-call on mobile)
+         - WhatsApp button (opens WhatsApp chat)
+         - Email link (opens email client)
+Step 3: Submit inquiry form:
+         Name: Test Guest | Phone: 9000000009 | Subject: General Inquiry
+         Message: "Testing the contact form."
+Step 4: Click Submit → verify success message.
+Step 5: Verify inquiry is received in the admin system.
+
+=== MODULE 6: GUEST BOOKING (WITHOUT ACCOUNT) ===
+
+Step 1: Complete the full 6-step booking wizard as a guest:
+         Step 1: AC Cleaning
+         Step 2: Samsung, Split, 1.5 Ton, 1 Unit
+         Step 3: Zone A address, PIN 500001
+         Step 4: Day after tomorrow, Afternoon (12-4)
+         Step 5: Name: Guest User | Mobile: 9000000009 | Email: guest@test.com
+         Special Instructions: "Call before coming."
+         Step 6: Review summary → Confirm & Book.
+Step 2: Verify Booking Confirmation screen:
+         - Animated checkmark
+         - Booking reference number
+         - "What Happens Next" 3-step timeline
+         - WhatsApp share button
+         - "Create an Account" prompt with email pre-filled
+Step 3: Click "Create an Account" → verify registration flow with email pre-filled.
+Step 4: Complete registration. Verify the guest booking is now linked to the account.
+
+=== MODULE 7: BLOCKED ACCESS TESTS ===
+
+Step 1: Try to access any customer portal URL directly (e.g., /my-bookings).
+Step 2: Verify redirect to login page — NEVER show customer data to guest.
+Step 3: Try to access Admin Portal URL → must redirect to login.
+Step 4: Verify NO customer financial data is ever exposed to a guest.
+
+EXPECTED OUTCOME:
+  - Guest can fully browse and understand the service offering.
+  - Guest can complete a booking without creating an account.
+  - Post-booking, guest is prompted to create an account.
+  - No authenticated data is ever visible to a guest.
+
+
+================================================================================
+SECTION D — END-TO-END SCENARIO-BASED TEST FLOWS
+================================================================================
+
+These scenarios test the COMPLETE lifecycle across multiple roles working
+together. Each scenario must be run in sequence.
+
+------------------------------------------------------------------------
+SCENARIO 1: COMPLETE SERVICE REQUEST LIFECYCLE
+------------------------------------------------------------------------
+ACTORS: Customer → CS Executive → Operations Executive → Technician → Billing
+FLOW:
+  1. Customer books "AC Repair - Cooling Issue" via website.
+  2. CS Executive creates SR if needed (phone booking scenario).
+  3. Operations Executive assigns Test Technician One.
+  4. Technician receives notification → navigates → GPS check-in → starts work.
+  5. Technician raises estimate (capacitor replacement).
+  6. Customer receives estimate → Approves via WhatsApp.
+  7. Technician requests parts → Store Manager approves.
+  8. Technician completes job → submits report with photos and signature.
+  9. Invoice auto-generated → sent to customer via WhatsApp.
+  10. Customer pays online → receipt generated.
+  11. 2 hours later: customer receives feedback request → rates 5 stars.
+  12. Billing Executive verifies invoice is marked Paid.
+  13. Finance Manager sees payment in revenue dashboard.
+
+PASS CRITERIA:
+  - Every step triggers the correct notification.
+  - SR timeline shows all milestones with correct timestamps.
+  - Invoice matches: service charge + approved estimate + parts + GST.
+  - Payment receipt is correctly formatted.
+  - 5-star review appears in the Admin → Feedback Management screen.
+
+------------------------------------------------------------------------
+SCENARIO 2: EMERGENCY SERVICE REQUEST
+------------------------------------------------------------------------
+ACTORS: Customer → Operations Executive → Technician
+FLOW:
+  1. Customer books "Emergency" AC service (surcharge acknowledged).
+  2. SR created with Emergency priority (RED badge).
+  3. Operations team receives push alert immediately.
+  4. Operations Executive must assign technician within 30 minutes.
+  5. Technician dispatched → must arrive within 4 hours (SLA).
+  6. Verify SLA timer countdown is visible in Operations Dashboard.
+  7. Complete job within SLA → SLA breach alert should NOT appear.
+  8. Test breach: artificially delay → verify SLA breach alert turns RED.
+
+------------------------------------------------------------------------
+SCENARIO 3: AMC ENROLLMENT AND VISIT COMPLETION
+------------------------------------------------------------------------
+ACTORS: CS Executive → Customer → Operations Executive → Technician
+FLOW:
+  1. CS Executive enrolls customer in "Standard AMC" (4 visits/year).
+  2. Contract PDF generated → sent to customer via WhatsApp + Email.
+  3. System auto-creates 4 visit SRs spaced 3 months apart.
+  4. Operations Executive reviews AMC Auto-Schedule Board.
+  5. Assigns Test Technician One to Visit 1.
+  6. Customer receives "AMC Visit Reminder" 3 days before and 1 day before.
+  7. Technician completes Visit 1 using the standard job workflow.
+  8. Visit 1 marked as Completed. AMC visit counter updates: 1 of 4 used.
+  9. Customer opens My AMC → verifies: Visit 1 = Completed, Next Visit = shown.
+  10. At 30 days before contract expiry: customer receives renewal reminder.
+
+------------------------------------------------------------------------
+SCENARIO 4: WARRANTY REVISIT FLOW
+------------------------------------------------------------------------
+ACTORS: Customer → CS Executive → Operations Manager → Technician
+FLOW:
+  1. Original job completed 15 days ago (within 30-day warranty window).
+  2. Customer calls: "The AC is still not cooling properly."
+  3. CS Executive searches the customer → opens Customer 360.
+  4. Verifies: original SR, parts replaced, warranty period = 30 days → still active.
+  5. CS Executive creates "Warranty Revisit" SR linked to original SR.
+  6. System auto-marks this as "No Charge" (warranty applies).
+  7. Senior technician assigned preferentially.
+  8. Technician completes revisit → marks as Warranty Visit.
+  9. Verify: NO invoice generated for warranty revisit.
+  10. Original SR flagged: "Warranty Revisit Occurred."
+  11. Operations Manager reviews jobs with warranty revisits in the report.
+
+------------------------------------------------------------------------
+SCENARIO 5: CUSTOMER ESCALATION AND COMPLAINT RESOLUTION
+------------------------------------------------------------------------
+ACTORS: Customer → CS Executive → Operations Manager → Finance Manager
+FLOW:
+  1. Customer raises support ticket: "Technician damaged my wall unit."
+  2. CS Executive opens ticket → reviews linked SR and job photos.
+  3. CS Executive escalates: "Equipment Damage Complaint" → Operations Manager.
+  4. Operations Manager reviews job report and photos.
+  5. If valid: Finance Manager is notified for refund/credit note approval.
+  6. Finance Manager approves credit note for Rs. 500.
+  7. Billing Executive issues credit note.
+  8. Customer notified of resolution via WhatsApp.
+  9. Support ticket status → Resolved.
+  10. Customer closes ticket → rates support: 4 stars.
+  11. Negative feedback (1-star on the job) appears in Negative Feedback Alert Queue.
+  12. Operations Manager reviews and flags technician for retraining.
+
+
+================================================================================
+SECTION E — WHAT TO LOG AS A BUG / DEFECT
+================================================================================
+
+USE THIS AS A REFERENCE WHEN DECIDING IF SOMETHING IS A BUG OR EXPECTED BEHAVIOR.
+
+DEFINITELY LOG AS BUG:
+  [ ] A role can see data that belongs to another role or another branch.
+  [ ] A role can perform an action their permission matrix does not allow.
+  [ ] A mandatory field accepts blank submission.
+  [ ] An auto-generated notification is NOT sent when it should be.
+  [ ] Invoice amount is calculated incorrectly (wrong tax or wrong total).
+  [ ] SR status does not update when technician updates the job in the mobile app.
+  [ ] GPS check-in accepts location that is clearly outside the 150-meter radius
+      without showing a warning dialog.
+  [ ] A job report can be submitted without 2 photos.
+  [ ] Audit log is missing an entry for a completed action.
+  [ ] A deleted/cancelled entity can be reactivated without proper flow.
+  [ ] Soft-deleted records appear in normal list views.
+  [ ] Payment amount does not match the invoice total.
+  [ ] A deactivated user can still log in.
+  [ ] A Super Admin cannot access another branch's data (should be able to).
+  [ ] Booking wizard allows submission without T&C checkbox checked.
+  [ ] Email or WhatsApp template shows merge tags as literal text (not replaced).
+  [ ] An expired coupon is accepted during booking.
+
+EXPECTED BEHAVIOR (NOT A BUG):
+  [ ] Technician cannot see other technicians' jobs — this is correct.
+  [ ] Finance Manager cannot see the Live Job Map — this is correct.
+  [ ] Guest cannot access customer portal screens — this is correct.
+  [ ] Billing Executive cannot see financial P&L — this is correct.
+  [ ] Discount above threshold requires Finance Manager approval — this is correct.
+  [ ] Technician cannot submit job report with incomplete mandatory checklist — correct.
+  [ ] Operations Executive cannot delete job status configurations — this is correct.
+  [ ] Marketing Manager cannot access customer personal data — this is correct.
+  [ ] Audit log entries cannot be deleted — this is correct (append-only by design).
+  [ ] Booking wizard Step 4 today's slots are hidden if less than 4 hours remain — correct.
+
+BUG REPORT TEMPLATE:
+  Title        : [Role] [Module] — Short description of the issue
+  Severity     : Critical / Major / Minor / Cosmetic
+  Steps to Reproduce:
+    1. ...
+    2. ...
+    3. ...
+  Expected Result : What SHOULD happen
+  Actual Result   : What DID happen
+  Screenshot      : Attached
+  Platform        : Web / Flutter App / Both
+  Tester          : Name
+  Date            : DD-MMM-YYYY
+
+
+================================================================================
+FINAL CHECKLIST — BEFORE MARKING TESTING COMPLETE
+================================================================================
+
+  [ ] All 16 Master Data items in Section B are configured.
+  [ ] All 11 internal roles have been tested individually.
+  [ ] Customer (Role 12) has been tested on both Web and Flutter App.
+  [ ] Guest (Role 13) has been tested on the public website.
+  [ ] All 5 end-to-end scenarios in Section D have been executed.
+  [ ] All identified defects are logged with screenshots and steps.
+  [ ] Notification triggers have been tested (WhatsApp / Email / Push).
+  [ ] Invoice calculation accuracy verified (service + parts + GST = correct total).
+  [ ] Role boundary violations tested (roles cannot cross-access data).
+  [ ] Audit log captures all critical actions.
+  [ ] GPS check-in enforcement tested (150-meter radius).
+  [ ] Offline mode tested for Technician mobile app (submit job report offline).
+  [ ] Payment flow tested end-to-end (UPI / COD / Cash).
+  [ ] PDF generation tested: Invoice, Receipt, Service Report, AMC Contract.
+  [ ] Coupon validation tested: valid, invalid, expired.
+  [ ] SLA breach alerts tested in Operations Dashboard.
+  [ ] Warranty revisit flow tested (no invoice generated for warranty visit).
+  [ ] AMC visit counter updates after each visit completion.
+
+
+================================================================================
+      COOLZO — QA TESTING GUIDE
+      Version 1.0 | Confidential | For QA / Testing Team Use Only
+      Precision. Comfort. Trust.
+================================================================================
