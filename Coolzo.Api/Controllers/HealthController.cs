@@ -17,6 +17,7 @@ public sealed class HealthController : ApiControllerBase
     }
 
     [HttpGet]
+    [HttpHead]
     [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<object>>> GetAsync(CancellationToken cancellationToken)
     {
