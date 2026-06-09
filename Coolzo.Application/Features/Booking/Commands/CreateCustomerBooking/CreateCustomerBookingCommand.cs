@@ -6,11 +6,11 @@ namespace Coolzo.Application.Features.Booking.Commands.CreateCustomerBooking;
 public sealed record CreateCustomerBookingCommand(
     long ServiceId,
     long AcTypeId,
-    long TonnageId,
-    long BrandId,
-    long SlotAvailabilityId,
-    string CustomerName,
-    string MobileNumber,
+    long? TonnageId,
+    long? BrandId,
+    long? SlotAvailabilityId,
+    string? CustomerName,
+    string? MobileNumber,
     string? EmailAddress,
     string AddressLine1,
     string? AddressLine2,
@@ -23,4 +23,6 @@ public sealed record CreateCustomerBookingCommand(
     string SourceChannel,
     bool IsEmergency,
     decimal? EmergencySurchargeAmount,
-    string? IdempotencyKey) : IRequest<BookingSummaryResponse>;
+    string? IdempotencyKey,
+    double? Latitude,
+    double? Longitude) : IRequest<BookingSummaryResponse>;

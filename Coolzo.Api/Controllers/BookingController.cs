@@ -2,6 +2,7 @@ using Coolzo.Application.Features.CustomerApp;
 using Coolzo.Application.Features.Booking.Commands.CreateCustomerBooking;
 using Coolzo.Application.Features.Booking.Commands.CreateGuestBooking;
 using Coolzo.Application.Features.Booking.Queries.GetBookingDetail;
+using Coolzo.Application.Features.Booking.Queries.GetBookingPublicSettings;
 using Coolzo.Application.Features.Booking.Queries.GetCustomerBookings;
 using Coolzo.Application.Features.Booking.Queries.SearchBookings;
 using Coolzo.Contracts.Common;
@@ -23,6 +24,16 @@ public sealed class BookingController : ApiControllerBase
     public BookingController(ISender sender)
     {
         _sender = sender;
+    }
+
+    [AllowAnonymous]
+    [HttpGet("public/settings")]
+    [ProducesResponseType(typeof(ApiResponse<BookingPublicSettingsResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<BookingPublicSettingsResponse>>> GetPublicSettingsAsync(
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetBookingPublicSettingsQuery(), cancellationToken);
+        return Success(response);
     }
 
     [AllowAnonymous]
@@ -52,7 +63,11 @@ public sealed class BookingController : ApiControllerBase
                 request.ModelName,
                 request.IssueNotes,
                 request.SourceChannel,
-                idempotencyKey),
+                request.IsEmergency,
+                request.EmergencySurchargeAmount,
+                idempotencyKey,
+                request.Latitude,
+                request.Longitude),
             cancellationToken);
 
         return Success(response, "Guest booking created successfully.");
@@ -87,7 +102,9 @@ public sealed class BookingController : ApiControllerBase
                 request.SourceChannel,
                 request.IsEmergency,
                 request.EmergencySurchargeAmount,
-                idempotencyKey),
+                idempotencyKey,
+                request.Latitude,
+                request.Longitude),
             cancellationToken);
 
         return Success(response, "Customer booking created successfully.");

@@ -45,4 +45,6 @@ public sealed record ServiceRequestDetailResponse(
     IReadOnlyCollection<JobAttachmentResponse> Attachments,
     IReadOnlyCollection<JobExecutionTimelineItemResponse> ExecutionTimeline,
     IReadOnlyCollection<ServiceRequestStatusHistoryResponse> StatusTimeline,
-    IReadOnlyCollection<AssignmentHistoryItemResponse> AssignmentHistory);
+    IReadOnlyCollection<AssignmentHistoryItemResponse> AssignmentHistory,
+    double? CustomerLatitude,
+    double? CustomerLongitude);

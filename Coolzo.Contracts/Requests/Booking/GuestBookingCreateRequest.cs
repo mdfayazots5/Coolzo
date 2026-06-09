@@ -4,9 +4,9 @@ public sealed record GuestBookingCreateRequest
 (
     long ServiceId,
     long AcTypeId,
-    long TonnageId,
-    long BrandId,
-    long SlotAvailabilityId,
+    long? TonnageId,
+    long? BrandId,
+    long? SlotAvailabilityId,
     string CustomerName,
     string MobileNumber,
     string? EmailAddress,
@@ -18,5 +18,9 @@ public sealed record GuestBookingCreateRequest
     string? AddressLabel,
     string? ModelName,
     string? IssueNotes,
-    string SourceChannel
+    string SourceChannel,
+    bool IsEmergency,
+    decimal? EmergencySurchargeAmount,
+    double? Latitude,
+    double? Longitude
 );

@@ -24,6 +24,18 @@ public sealed class BookingRepository : IBookingRepository
         return _dbContext.CustomerAddresses.AddAsync(customerAddress, cancellationToken).AsTask();
     }
 
+    public Task AddCustomerEquipmentAsync(CustomerEquipment equipment, CancellationToken cancellationToken)
+    {
+        return _dbContext.CustomerEquipments.AddAsync(equipment, cancellationToken).AsTask();
+    }
+
+    public Task<bool> HasCustomerEquipmentByTypeAsync(long customerId, string equipmentType, CancellationToken cancellationToken)
+    {
+        return _dbContext.CustomerEquipments.AnyAsync(
+            e => e.CustomerId == customerId && e.EquipmentType == equipmentType && e.IsActive && !e.IsDeleted,
+            cancellationToken);
+    }
+
     public Task AddBookingAsync(Booking booking, CancellationToken cancellationToken)
     {
         return _dbContext.Bookings.AddAsync(booking, cancellationToken).AsTask();

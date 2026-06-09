@@ -29,6 +29,8 @@ public sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Property(entity => entity.PincodeSnapshot).HasMaxLength(16).IsRequired();
         builder.Property(entity => entity.ZoneNameSnapshot).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.ServiceNameSnapshot).HasMaxLength(128).IsRequired();
+        builder.Property(entity => entity.LatitudeSnapshot).HasColumnType("double precision");
+        builder.Property(entity => entity.LongitudeSnapshot).HasColumnType("double precision");
         builder.Property(entity => entity.EstimatedPrice).HasColumnType("numeric(18,2)");
 
         builder.HasOne(entity => entity.Customer)

@@ -5,6 +5,7 @@ using Coolzo.Domain.Enums;
 using Coolzo.Shared.Constants;
 using Coolzo.Shared.Exceptions;
 using Coolzo.Shared.Models;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Coolzo.Application.Common.Security;
 
@@ -15,8 +16,10 @@ public sealed class CustomerPasswordPolicyService : ICustomerPasswordPolicyServi
     private const string UppercaseCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private const string NumberCharacters = "0123456789";
     private const string SpecialCharacters = "!@#$%^&*()-_=+[]{}?";
+    private const string PolicyCacheKey = "customer_password_policy";
 
     private readonly IApplicationEnvironment _applicationEnvironment;
+    private readonly IMemoryCache _cache;
     private readonly ICurrentDateTime _currentDateTime;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ISystemSettingRepository _systemSettingRepository;
@@ -29,7 +32,8 @@ public sealed class CustomerPasswordPolicyService : ICustomerPasswordPolicyServi
         IUserPasswordHistoryRepository userPasswordHistoryRepository,
         IUserRepository userRepository,
         ICurrentDateTime currentDateTime,
-        IApplicationEnvironment applicationEnvironment)
+        IApplicationEnvironment applicationEnvironment,
+        IMemoryCache cache)
     {
         _systemSettingRepository = systemSettingRepository;
         _passwordHasher = passwordHasher;
@@ -37,10 +41,16 @@ public sealed class CustomerPasswordPolicyService : ICustomerPasswordPolicyServi
         _userRepository = userRepository;
         _currentDateTime = currentDateTime;
         _applicationEnvironment = applicationEnvironment;
+        _cache = cache;
     }
 
     public async Task<CustomerPasswordPolicySnapshot> ResolvePolicyAsync(CancellationToken cancellationToken)
     {
+        if (_cache.TryGetValue(PolicyCacheKey, out CustomerPasswordPolicySnapshot? cached) && cached is not null)
+        {
+            return cached;
+        }
+
         var settings = await _systemSettingRepository.GetByKeysAsync(CustomerPasswordSettingKeys.All, cancellationToken);
 
         var policy = new CustomerPasswordPolicySnapshot(
@@ -61,6 +71,8 @@ public sealed class CustomerPasswordPolicyService : ICustomerPasswordPolicyServi
             GetIntegerValue(settings, CustomerPasswordSettingKeys.PasswordExpiryDays));
 
         ValidatePolicy(policy);
+
+        _cache.Set(PolicyCacheKey, policy, TimeSpan.FromMinutes(5));
 
         return policy;
     }

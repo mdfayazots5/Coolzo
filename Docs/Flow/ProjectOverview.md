@@ -372,12 +372,47 @@ Controllers: ServiceRequestController (/api/service-requests),
           Status (string), Remarks (string), StatusDateUtc (DateTime)
       - AssignmentHistory (AssignmentHistoryItemResponse[]):
           ActionName, PreviousTechnicianName?, CurrentTechnicianName, Remarks, ActionDateUtc
+      - CustomerLatitude (double?): GPS latitude from tblCustomerAddress — null for pre-GPS bookings [added 2026-06-09]
+      - CustomerLongitude (double?): GPS longitude from tblCustomerAddress — null for pre-GPS bookings [added 2026-06-09]
+  Admin Portal "View on Map":
+      - When CustomerLatitude/CustomerLongitude are non-null: opens Google Maps directions to exact coords
+        URL: https://www.google.com/maps/dir/?api=1&destination={lat},{lng}
+      - Fallback (null coords): OpenStreetMap address-text search
   DB Tables:            ServiceRequests, Bookings, Customers, Technicians,
                         JobReports, JobPhotos, SRStatusHistory, SRAssignments,
                         Estimates, Invoices, JobChecklists
   Failure Cases:
     - SR not found → 404
     - Unauthorized → 403
+
+---
+
+### Flow: Update Service Request Coordinates (Admin Pin-Drop) [added 2026-06-09]
+  Entry Points:         Admin SR Detail screen — Service Location card
+  UI Trigger:           Admin drags the Leaflet pin on the mini-map then clicks "Save Pin"
+  API Endpoint:         PATCH /api/service-requests/{serviceRequestId}/coordinates
+  Auth:                 Policy = ServiceRequestUpdate
+  Request DTO:          UpdateServiceRequestCoordinatesRequest
+    - Latitude (double, required): corrected GPS latitude
+    - Longitude (double, required): corrected GPS longitude
+  Response DTO:         ApiResponse<ServiceRequestDetailResponse> (full updated SR detail)
+  DB Tables:            tblCustomerAddress (Latitude/Longitude updated), tblBooking (LatitudeSnapshot/LongitudeSnapshot updated), AuditLogs (write)
+  Business Rules:
+    1. Both CustomerAddress and Booking snapshots are updated atomically
+    2. Audit log entry created with ActionName = "UpdateServiceRequestCoordinates"
+    3. SR immediately appears on live map after save (ShouldRenderOnLiveMap re-evaluates on next poll)
+  UI Behaviour:
+    - Mini Leaflet map (220px) rendered in Service Location card on SR detail screen
+    - Draggable pin — defaults to current saved coords; falls back to Hyderabad city center (17.385, 78.4867)
+    - Coordinates displayed below map: lat/lng to 6dp
+    - "— drag to set exact location" warning shown when no saved coords yet
+    - "Save Pin" button → PATCH endpoint → refreshes SR → toast success
+    - "View on Map" button: Google Maps directions with exact coords when saved; OpenStreetMap text search fallback
+  Failure Cases:
+    - SR not found → 404
+    - No CustomerAddress linked → 404
+    - Unauthorized → 403
+  Flow Stable: YES
 
 ---
 
@@ -1484,6 +1519,30 @@ Screens (platform / roles / purpose / key actions)
 
 ---
 
+### Flow EQP-4b: Get My Equipment By Id (Customer Portal)
+  Entry Points:         Customer Portal → My Equipment → Equipment detail / edit screen
+  UI Trigger:           Navigation to /portal/equipment/{id}
+  Endpoint:             GET /api/customers/me/equipment/{equipmentId:long}
+  Auth:                 Authorize (JWT — customer)
+  Request DTO:          equipmentId (route param, long)
+  Response DTO:         ApiResponse<CustomerEquipmentResponse>
+    CustomerEquipmentResponse: same shape as EQP-4 list items
+  Application Layer:    GetMyCustomerEquipmentByIdQuery(CustomerEquipmentId) →
+                        GetMyCustomerEquipmentByIdQueryHandler
+  DB Tables Read:       tblCustomerEquipment via ICustomerAppRepository.GetEquipmentForUpdateAsync
+                        (filters by CustomerId + CustomerEquipmentId + IsDeleted=false)
+  Business Rules:
+    1. Ownership enforced: GetEquipmentForUpdateAsync validates CustomerId matches JWT.
+    2. If record not found or belongs to another customer → 404 NotFound.
+  Failure Cases:
+    401 — not authenticated
+    404 — equipment not found or not owned by caller
+  Notes on Drift:
+    Added 2026-05-26. Backend previously had no single-item GET for customer equipment.
+    GetEquipmentForUpdateAsync was reused (no new repo method needed).
+
+---
+
 ### Flow EQP-5: Add My Equipment (Customer Portal)
   Entry Points:         Customer Portal → My Equipment → Add New Appliance
   UI Trigger:           Add Equipment form submit
@@ -2348,146 +2407,376 @@ Notes:
 
 # SECTION 4 — BOOKING ENGINE
 
-1. BOOKING WIZARD — 6-STEP FLOW
+1. BOOKING WIZARD — 5-STEP FLOW (Web — Journey A: Guest / Journey B: Logged-In)
+   Updated: 2026-05-27 — Stable Contract Level
+   Source file: Frontend/Web/src/pages/BookingWizard.tsx
+   Spec source: Frontend/Web/CoolElite_Booking_Flow_Prompts.md
 
-Overview: A guided 6-step booking wizard used on Web and Mobile (Customer Website & Customer Mobile App). Steps preserve state, validate input, and call booking APIs as the user proceeds. Guest bookings create a temporary booking record and provide an option to convert to a full account after confirmation.
+Overview: A guided 5-step booking wizard on the Customer Portal Website (Angular/React SPA).
+Steps preserve wizard state locally (WizardData). No API writes until the final Confirm & Book.
+Two journeys share the same component; Journey B (logged-in) has enhanced steps (saved address,
+registered equipment, pre-verified mobile). Guest mobile is OTP-verified in Step 4.
+SR created on submit with status: Pending Assignment.
 
-Step 1 — Service Selection
-- Platform: Web, Mobile
-- Fields / Elements:
-   - Visual card grid of services (icon + label + description)
-   - Service sub-type expansion (accordion or inline modal)
-   - Selected state visual: gold border + checkmark
-   - Search / Filter bar (optional)
-   - Service urgency toggle (Normal / Emergency)
-- Validation:
-   - Must select one primary service; if sub-type required, one sub-type must be selected.
-   - Emergency toggle requires acceptance of surcharge acknowledgement.
-- UX behaviour:
-   - Cards highlight on hover; selected card shows gold border and a checkmark badge.
-   - Sub-type expansion animates open; selecting sub-type collapses others.
-   - Emergency shows persistent red badge across steps.
-   - Disabled state: services with no availability for the selected zone are disabled and show tooltip.
-   - Error state: trying to proceed without selection shows inline error under grid.
-- API called: none until step confirm; wizard may prefetch `GET /api/service-types` and `GET /api/service-subtypes`.
+Deep-link pre-select [2026-06-08]: catalog pages navigate to /book with router state.
+  - Services.tsx / ServiceDetail.tsx "Book Now" → state { serviceId, serviceName, price }.
+  - Home.tsx per-category card "Book Now" → state { serviceCategoryId, serviceCategoryName }
+    (dynamic categories only; hero "Book a Service" passes no state = fresh start).
+  - The wizard resolves the deep-link inside the catalog-load .then() (where services/categories
+    are available): a serviceId seeds BOTH its category (serviceTypeId) and the sub-type chip
+    (serviceSubTypeId + base price); a category-only link seeds serviceTypeId only.
+  - Previously inert (wizard read serviceCategoryId but callers sent serviceId) — fixed.
 
-Step 2 — Equipment Details
-- Platform: Web, Mobile
-- Fields / Elements:
-   - Brand (searchable dropdown with instant suggestions)
-   - Model (free-text or model selector if available)
-   - AC Type (radio buttons with icons: Split / Window / Cassette / Centralized / Other)
-   - Capacity (pills: 1 Ton / 1.5 Ton / 2 Ton / 3 Ton / Custom)
-   - Units (stepper) — number of identical units
-   - Registered equipment selector (dropdown pre-filled for logged-in users)
-   - Serial Number (optional if registering new equipment)
-   - Additional notes / Special instructions (optional)
-- Validation:
-   - Brand required when registering new equipment or when user chooses 'Enter new equipment'.
-   - Capacity must be one of allowed values or custom numeric with sanity range (0.5—10 Ton).
-   - Units must be integer >=1 and <=10 (business rule configurable).
-   - If registered equipment selected, pre-fill Brand/Model/Serial fields and lock editing unless user chooses 'edit'.
-- UX behaviour:
-   - Brand field shows typeahead; selecting brand filters Model options.
-   - Registered-equipment prefill shows a chip with equipment tag and an edit link.
-   - Disabled states: capacity pills disabled if equipment type is 'Other' and requires free-text.
-   - Error states: invalid capacity or missing required Brand shows inline messages.
-- API called: `GET /api/equipment/brands`, `GET /api/customers/{id}/equipment` (if logged), optional validation `POST /api/equipment/validate-serial`.
+PENDING — VERIFICATION (development complete; NOT yet tested as of 2026-06-08):
+  All booking-flow code below is implemented and compiles (backend build clean, frontend tsc clean),
+  but has NOT been exercised end-to-end. The following 4 journeys require E2E testing before sign-off:
+    1. Guest — normal booking (slot selected) → POST /api/bookings/guest
+    2. Guest — emergency booking (no slot, surcharge) → POST /api/bookings/guest
+    3. Logged-in — normal booking (saved address / equipment quick-select) → POST /api/bookings/customer
+    4. Logged-in — emergency booking → POST /api/bookings/customer
+  Also pending (ops): apply Docs/Postgres/14_booking_optional_equipment_slot.sql to running databases
+  (nullable SlotAvailabilityId / TonnageId / BrandId). Fresh DBs already get it from 02_create_tables.sql.
 
-Step 3 — Location (Service Location)
-- Platform: Web, Mobile
-- Fields / Elements:
-   - Address Line 1 (text)
-   - Address Line 2 / Apartment / Floor (text)
-   - City (dropdown or auto-detected)
-   - PIN / Postal Code (text with zone validation)
-   - Address Label (Home / Office / Other)
-   - Map pin display + confirm location
-   - Save address to account (checkbox, visible when logged-in)
-- Validation:
-   - Address Line 1, City and PIN required.
-   - PIN validated against `Zones` and `ZonePinCodes`; if outside service area, show Zone Unavailable state.
-   - Latitude/Longitude required when PIN ambiguous; map pin must be within selected zone.
-- UX behaviour:
-   - PIN field triggers zone lookup; unavailable zones show tooltip and block the booking flow.
-   - Map allows pin-drag; pin updates Lat/Lng and reverse geocoded address preview.
-   - Save-to-account persists a CustomerAddress via API after booking or upon explicit save.
-- API called: `GET /api/zones/lookup?pin={pin}`, optional `POST /api/customers/{id}/addresses` when saving.
+─────────────────────────────────────────────────────────────────────────────
+STEP 1 — Service & AC Type   [STABLE — 2026-05-27]
+─────────────────────────────────────────────────────────────────────────────
+Entry Points:   /book, any CTA on the site
+UI Trigger:     Page load / “Book Now” CTA
 
-Step 4 — Date & Time Slot
-- Platform: Web, Mobile
-- Fields / Elements:
-   - 7-day calendar view (next 7 days)
-   - Time windows per day (Morning 8-12, Afternoon 12-4, Evening 4-7 or configured windows)
-   - Slot availability indicators (available, limited, full)
-   - Emergency toggle (shows SLA promise and surcharge note)
-   - Today availability rule: same-day slots allowed only if booking occurs >4 hours before slot start
-- Validation:
-   - Must select a date and a time window; blocked slots cannot be selected.
-   - If emergency selected, allow same-day even if within 4-hour cutoff only when emergency policy allows.
-- UX behaviour:
-   - Unavailable slots greyed out with tooltip reason (no slots / technician unavailable / zone blackout).
-   - Selecting date fetches live slot availability; selecting a slot reserves a tentative hold until confirm (timeout 5–10 minutes).
-   - Error state: if hold fails on confirm, user prompted to pick a new slot.
-- API called: `GET /api/bookings/slots?date={date}&zone={zoneId}&serviceType={id}`, `POST /api/bookings/hold` (tentative hold), `POST /api/bookings/check-availability`.
+Journey B Enhancement [B-S1] — Equipment Quick-Select (Logged-In Only):
+  Shown above the category cards when isLoggedIn === true AND myEquipment.length > 0.
+  Section header: “Book for your saved equipment?” with “Skip” link.
+  Display: horizontal scrollable card row; each card shows:
+    - Icon (Wind for Split, Building2 for Cassette/Centralized, Wind fallback)
+    - Equipment name (or “${brand} ${type}” if name absent)
+    - Capacity and location label
+    - Selected state: navy bg + white text + gold ring
+  Special card: “➕ New / different unit” — deselects equipment
+  On equipment card tap:
+    - selectedEquipmentId, selectedEquipmentName set
+    - AC Type chip auto-selected by matching eq.type.toLowerCase() against
+      AcTypeLookupResponse.acTypeName.toLowerCase()
+    - If no match: acTypeId unchanged (user selects manually)
+  API Calls for B-S1:
+    GET /api/customers/me/equipment — returns CustomerEquipmentResponse[]
+      (loaded on wizard mount when isLoggedIn; filtered to isActive === true)
+  State Written: selectedEquipmentId, selectedEquipmentName (+ acTypeId/acTypeName if match)
 
-Step 5 — Contact Info
-- Platform: Web, Mobile
-- Fields / Elements:
-   - Full Name (pre-filled if logged-in)
-   - Mobile Number (with OTP verify option for guests)
-   - Email Address
-   - Special Instructions (text area)
-   - Coupon Code (input + Apply button)
-- Validation:
-   - Name and Mobile are required; mobile must be valid per E.164 or local rules.
-   - Coupon validation returns discount amount or error (expired / not applicable).
-   - OTP verify required for guest booking for mobile verification (optional depending on business rules).
-- UX behaviour:
-   - Coupon apply triggers `Apply Coupon` API and shows discount or error inline.
-   - If OTP required, wizard pauses for OTP verification flow and resumes on success.
-   - Disabled states: Confirm disabled until required fields validated and T&C accepted on Step 6.
-- API called: `POST /api/coupons/apply`, `POST /api/otp/send`, `POST /api/otp/verify`.
+Fields:
+  Service Category (visual card grid, 3-col)
+    - Type: button cards with icon + label
+    - Required: Yes
+    - Options: sourced from GET /api/booking-lookups/service-categories
+    - Selected state: gold border-2 + checkmark badge overlay
+    - Unselected when another is selected: opacity-60
+    - “Other” category: free-text textarea (max 100 chars) renders below cards
+      on selection; chip row hidden
+    - AMC Enrollment: no sub-type chip row shown
 
-Step 6 — Summary & Confirm
-- Platform: Web, Mobile
-- Fields / Elements:
-   - Booking summary (service, equipment, address, slot, contact)
-   - Estimated price range (line items or base estimate)
-   - Coupon discount display
-   - Terms & Conditions checkbox (required)
-   - Confirm & Book (primary CTA)
-   - Secondary: Edit (go back to steps), Save Draft (mobile)
-- Validation:
-   - T&C checkbox must be checked.
-   - Slot hold must still be valid; on expired hold, user must re-select a slot.
-- UX behaviour:
-   - Confirm triggers `Create Booking` API; on success shows Booking Confirmation page with reference number.
-   - If payment required at booking (e.g., paid AMC), redirect to payment flow.
-   - Offline: on mobile, if network unavailable at Confirm, wizard saves draft locally and shows Resume/Sync options.
-- API called: `POST /api/bookings` (Create Guest Booking / Create Booking), `POST /api/bookings/confirm`, `GET /api/bookings/{id}/summary`.
+  Service Sub-Type (inline chip row)
+    - Type: flex-wrap button chips
+    - Required: Yes — except for AMC Enrollment and Other categories
+    - Data source: GET /api/booking-lookups/services (loaded on page mount, filtered by
+      selected serviceCategoryId — no API call on chip selection)
+    - Appears: AnimatePresence height-transition (200ms ease-in-out) below category cards
+      after a category is selected
+    - Selected chip: navy bg + white text; Unselected: navy outline + navy text
+    - Changing category: resets serviceSubTypeId/serviceSubTypeName; does NOT reset acTypeId
+
+  AC Type (chip row — ALWAYS VISIBLE, not conditional)
+    - Type: 2-col / 4-col grid of button chips
+    - Required: Yes
+    - Options: sourced from GET /api/booking-lookups/ac-types (e.g., Split, Window, Cassette,
+      Centralized)
+    - Selected state: navy bg + white text
+
+  (Number of Units field REMOVED 2026-06-08 — see Notes on Drift. Unit count is not part of the
+   booking-create contract nor the DB; technician confirms unit quantity on-site.)
+
+API Calls:
+  GET /api/booking-lookups/service-categories   — categories (on page mount)
+  GET /api/booking-lookups/services             — all sub-types grouped by categoryId (on page mount)
+  GET /api/booking-lookups/ac-types             — AC type chips (on page mount)
+  No API calls on field selection — all data cached from initial load.
+
+Validation:
+  - serviceTypeId must be selected
+  - acTypeId must be selected
+  - serviceSubTypeId must be selected unless isAmc(serviceTypeName) or isOther(serviceTypeName)
+
+State Written (WizardData):
+  serviceTypeId, serviceTypeName, serviceSubTypeId, serviceSubTypeName,
+  acTypeId, acTypeName, serviceBasePrice, otherNote
+
+Exit Condition: category + sub-type (where applicable) + AC type selected
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 2 — Service Location   [STABLE — 2026-05-27]
+─────────────────────────────────────────────────────────────────────────────
+Fields:
+  PIN / Postal Code (first field, 6-digit numeric)
+    - Zone validation fires on useEffect when pincode.length === 6
+    - Serviceable: green zone chip “Zone: [Name] — we serve this area”
+    - Non-serviceable: inline error block + WhatsApp deep-link
+    - Invalid format: inline field error
+
+  Address Line 1 (min 5 chars, max 128)  — revealed only after serviceable PIN
+  Address Line 2 (optional, max 128)      — revealed only after serviceable PIN
+  City (text, auto-populated from zone, editable) — revealed only after serviceable PIN
+
+  Address fields animate in with AnimatePresence (250ms ease-in-out) after zone confirmed.
+
+Journey B Enhancement [B-S2] — Saved Address Quick-Select (Logged-In Only):
+  Shown above the PIN field when isLoggedIn === true AND myAddresses.length > 0.
+  Section header: "Use a saved address?" with "Enter a different address" toggle link.
+  Display: vertical card list sorted (default address first); each card shows:
+    - addressLabel (or "Address {n}" fallback)
+    - "Default" badge (green) on isDefault address
+    - addressLine1, cityName, pincode
+    - Home / Building2 icon (derived from label text)
+  On address card tap:
+    - Fills pincode, addressLine1, addressLine2, cityName
+    - If zoneId + zoneName exist on CustomerAddressResponse: fills directly (no API call)
+    - If zoneId missing: calls GET /api/booking-lookups/zones/by-pincode/{pin} as fallback
+    - Sets selectedAddressId, setPinStatus("valid")
+    - Collapses manual form (setShowManualForm(false))
+  "Enter a different address" link: sets showManualForm(true), clears selectedAddressId
+  API Calls for B-S2:
+    GET /api/customers/me/addresses — returns CustomerAddressResponse[]
+      (loaded on wizard mount when isLoggedIn)
+    GET /api/booking-lookups/zones/by-pincode/{pin} — fallback only when zoneId missing on addr
+  State Written: selectedAddressId (+ all address fields from selected address)
+
+API Calls:
+  GET /api/booking-lookups/zones/by-pincode/{pin}
+    - Returns: { isServiceable: bool, zoneName: string, zoneId: number }
+
+Validation: pincode.length === 6 AND zoneId !== null AND addressLine1.trim().length >= 5
+
+State Written: pincode, zoneId, zoneName, addressLine1, addressLine2, cityName,
+               selectedAddressId (Journey B only)
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 3 — Date & Time   [STABLE — 2026-05-27]
+─────────────────────────────────────────────────────────────────────────────
+Fields:
+  Date Picker (inline 14-day calendar grid)
+    - 7 columns (Mon–Sun), rows fill forward 14 days from today
+    - Today rule: only shown as selectable if current hour < 4 (i.e. ≥ 4hrs to 8 AM)
+    - Selected state: navy fill + gold ring ring-offset-1
+
+  Time Window (3 large cards loaded after date selection)
+    - Options: Morning (8 AM–12 PM) · Afternoon (12–4 PM) · Evening (4–7 PM)
+    - Availability sourced from API, mapped to windows by startHour
+    - States: normal / “1 slot left” (amber badge) / “Full” (red badge, disabled)
+    - Selecting a window stores: slotWindow + slotAvailabilityId (first available slot in window)
+    - Selected card: navy bg + gold border + white text
+
+  Emergency Service Card (always shown, amber left border accent)
+    - Overrides date to today, sets isEmergency = true, emergencySurcharge = 499
+    - Sets slotWindow = “Emergency”, slotAvailabilityId = null
+    - X button deselects emergency and restores normal flow
+    - Confirmation callout shown on card after selection
+
+API Calls:
+  GET /api/booking-lookups/slots?zoneId={id}&slotDate={date}
+    - Fires on each date selection
+    - Returns: SlotAvailabilityResponse[] (slotAvailabilityId, startTime, endTime, availableCapacity, isFullyBooked)
+    - Slots grouped into Morning/Afternoon/Evening windows client-side
+
+Validation: slotDate selected AND (slotAvailabilityId !== null OR isEmergency === true)
+
+State Written: slotDate, slotAvailabilityId, slotWindow, isEmergency, emergencySurcharge
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 4 — Contact Details (Guest)   [STABLE — 2026-05-27]
+─────────────────────────────────────────────────────────────────────────────
+Journey A (Guest):
+  Full Name (text, min 2 chars, no numbers)
+  Mobile Number (+91 prefix, 10-digit, must not start with 0 or 1)
+    - After valid 10-digit entry: “Verify” button appears inline
+  OTP Verification (inline 6-box input, appears after “Verify” tap)
+    - 60-second countdown with “Resend OTP” after expiry
+    - Max 3 attempts; 4th attempt sets otpLocked = true
+    - On verified: mobile field shows green badge, mobileVerified = true
+    - If registered mobile: soft prompt shown (non-blocking)
+  Special Instructions (textarea, max 250 chars, always blank on entry)
+  (Coupon Code field REMOVED 2026-06-08 — see Notes on Drift.)
+
+Journey B Enhancement [B-S4] — Logged-In Contact Step:
+  Name: read-only display “Booking for: [Full Name]” (from CurrentUserResponse.fullName)
+  Mobile: read-only masked display “Contact: +91 [XX XXX XX XXX]”
+    - Mask pattern: `${mobile.slice(0,2)}XXX XX${mobile.slice(-3)}`
+    - Mobile sourced from ProfileService.getMyProfile() (mobileNumber field)
+    - NOT available on CurrentUserResponse — requires separate profile load
+  No OTP flow — mobileVerified defaults to true for logged-in users
+  Special Instructions: same textarea as guest (max 250 chars)
+  (Coupon Code + Loyalty Coupon Chip REMOVED 2026-06-08 — see Notes on Drift. GET /api/offers
+   no longer loaded on wizard mount.)
+
+  API Calls for B-S4:
+    GET /api/customers/me/profile — returns CustomerProfileResponse (mobileNumber field)
+
+API Calls (Guest OTP):
+  POST /api/auth/otp/send            — payload: { phone: string }
+  POST /api/auth/otp/verify          — payload: { phone: string, otp: string }
+
+Validation (Guest):   guestName.length >= 2 AND mobileVerified === true
+Validation (Logged-in): always valid (T&C click-through in Step 5)
+
+State Written: guestName, guestMobile, mobileVerified, specialInstructions
+
+─────────────────────────────────────────────────────────────────────────────
+STEP 5 — Review & Confirm   [STABLE — 2026-05-27]
+─────────────────────────────────────────────────────────────────────────────
+Summary Cards (4 cards, each with visible “Edit” link):
+  Card 1 — Service:     category name + sub-type + AC type (+ equipment name if selected)
+  Card 2 — Location:    address line 1/2 + city + PIN + zone name
+  Card 3 — Appointment: formatted date + window label + Emergency badge (if applicable)
+  Card 4 — Contact:     guest name + masked mobile
+
+Pricing Block (navy bg):
+  - “Estimated service charge: ₹X” (serviceBasePrice; no unit multiplier)
+  - Emergency surcharge line: “+ ₹499 priority charge” in amber (if emergency)
+  - Estimated total (only shown when the emergency surcharge applies)
+  - “Applicable GST will be added to your final invoice.”
+  (Coupon discount line REMOVED 2026-06-08 — see Notes on Drift.)
+
+T&C Checkbox (required — enables Confirm & Book):
+  “I agree to CoolElite's Terms of Service and Cancellation Policy.”
+
+Confirm & Book Button (gold, full-width):
+  - Enabled only when termsAccepted === true
+  - Loading state: spinner + “Booking…” label; disabled during API call
+  - Error state: inline error block with retry message
+
+Trust Strip: Verified technicians · SSL secured · Digital report after every visit
+
+API Call on Confirm:
+  Guest:     POST /api/bookings/guest
+  Logged-in: POST /api/bookings/customer
+  Payload fields:
+    serviceId (= serviceSubTypeId ?? serviceTypeId),
+    acTypeId, addressLine1, addressLine2,
+    cityName, pincode, issueNotes (specialInstructions + otherNote),
+    isEmergency, sourceChannel: “web”,
+    slotAvailabilityId (omitted/undefined when emergency),
+    emergencySurchargeAmount (sent only when emergency)
+    NOTE: tonnageId/brandId are NOT sent — verified on-site (backend accepts null) [2026-06-08]
+  Guest-only additions: customerName, mobileNumber
+
+On Success:
+  Navigate to /booking-confirmation with booking details
+  SR created with status: Pending Assignment
+  SR number format: CE/YYYY/MM/XXXXXX
+  WhatsApp + Email confirmation sent
+
+Validation: termsAccepted === true
+
+State Written: termsAccepted
+
+─────────────────────────────────────────────────────────────────────────────
+NOTES ON DRIFT (2026-05-27)
+─────────────────────────────────────────────────────────────────────────────
+- Old wizard was 7 steps: Service → Equipment (brand/model/tonnage) → Location → Slots →
+  Contact → Review → Confirm & Pay. Equipment Details step removed as technician verifies
+  brand/model/tonnage on-site. Emergency moved from step 4 toggle to a dedicated card in Step 3.
+- Old Step 1 showed individual services (ServiceLookupResponse) as the primary selection.
+  Corrected to spec: categories are primary cards; services become sub-type chips.
+- Old slot display: individual slot cards (slotAvailabilityId per card). Corrected to spec:
+  3-window card display (Morning/Afternoon/Evening); first available slotAvailabilityId per
+  window is stored.
+- Coupon endpoint corrected: was phantom POST /api/coupons/apply — actual is
+  POST /api/customer-marketing/offers/validate-coupon.
+- OTP endpoint corrected: was phantom POST /api/otp/send/verify — actual is
+  POST /api/auth/otp/send and POST /api/auth/otp/verify (from AuthController).
+- Slot-hold step removed (POST /api/bookings/hold does not exist; booking is idempotent
+  via X-Idempotency-Key).
+
+─────────────────────────────────────────────────────────────────────────────
+NOTES ON DRIFT (2026-06-08) — Coupon + Unit Count removed from wizard
+─────────────────────────────────────────────────────────────────────────────
+Drift type: Request/response drift (UI collected data the booking-create contract could not carry).
+- The wizard collected `unitCount` (Step 1 stepper) and coupon data (`couponCode`/`appliedCoupon`/
+  `discountAmount`, Step 4 + loyalty chip), but the booking-create contract
+  (CustomerBookingCreateRequest / GuestBookingCreateRequest → POST /api/bookings/customer | /guest)
+  has NO unitCount or couponCode fields, and neither does the booking/service-request DB table.
+  Result: customers could apply a promo and see a discount that was silently dropped on submit;
+  unit count never persisted.
+- Resolution: removed both from the UI entirely (steppers, coupon entry, loyalty chip, and all
+  related WizardData fields and state). API and DB are unchanged and remain null-tolerant because
+  these fields were never part of the booking pipeline — nothing was sent, nothing was stored.
+- Scope guard: the standalone POST /api/customer-marketing/offers/validate-coupon endpoint and the
+  DiscountAmount columns on Quotation/Invoice (billing) tables are a SEPARATE flow and were NOT
+  touched. Promotions, if reintroduced, must be added to the booking contract + DB first, then UI.
+- Services.tsx field mismatches fixed in the same change: category chip used `serviceCategoryName`
+  (correct: `categoryName`); service card used `service.description` (correct: `summary`) and
+  `service.serviceCategoryName` for the icon (corrected to a categoryId→categoryName lookup);
+  `service.estimatedDurationMinutes` (not on ServiceLookupResponse) display block removed.
 
 2. POST-BOOKING SCREENS
-- Booking Confirmation Page
-   - Success state with booking reference number, service summary, technician ETA window note, WhatsApp share CTA, account creation prompt for guests, and a 3-step “What happens next” timeline (Assign → Technician En Route → Job Complete).
-- Slot Unavailable / Zone Unavailable
-   - Clear messaging with next available options and contact support CTA.
-- Booking Draft Resume
-   - React / Mobile: booking draft saved locally (indexed DB or secure storage); user can Resume or Start Fresh. Draft shows last saved step and prefilled fields.
+- Booking Confirmation Page (/booking-confirmation)
+   - Success state: animated checkmark, SR number (large + copy button), 3-line booking summary,
+     “What happens next” 3-step guide, Track Booking link, Share via WhatsApp button.
+   - AMC upsell card: shown only for Repair/Cleaning AND no active AMC contract.
+   - Guest account creation card: shown only for guest bookings.
 
 3. SPECIAL BOOKING VARIANTS
 - Emergency Booking
-   - Shows surcharge bottom sheet with confirmation; SLA promise displayed (e.g., ETA within X hours); emergency badge applied across steps; same-day allowance rules differ.
+   - Selected via Emergency card in Step 3; overrides date to today, adds ₹499 surcharge.
+   - slotWindow = “Emergency”, slotAvailabilityId = null (dispatch handled by ops).
+   - priority = Emergency on SR creation.
 - AMC Enrollment Booking
-   - Pre-select AMC plan and allow multiple units selection; Step 6 shows contract summary, billing schedule, and enrollment CTA.
+   - Category selected in Step 1; no sub-type chips shown (chip row hidden).
 - Guest Booking
-   - After booking success, prompt to create account with pre-filled email/phone and copy booking into the new account.
+   - Mobile OTP-verified in Step 4 as identity anchor for the SR.
+   - Guest booking linked to verified mobile — claimable on account creation.
+   - Registration prompt shown on Summary screen (non-blocking).
 
-4. BOOKING WIZARD ARCHITECTURE (React)
-- State: `BookingWizardNotifier` holds wizard state (currentStep, selections, holds, draftId).
-- Back navigation preserves state across steps; moving forward validates current step and caches state.
-- Deep link entry: booking URL or WhatsApp pre-fill can open wizard at Step N with prefilled fields.
-- Offline behavior: Steps 1–4 work offline using cached master data (service types, brands, zones); Step 6 requires network to create booking; drafts sync when online.
+4. BOOKING WIZARD ARCHITECTURE (React/TypeScript)   [STABLE — 2026-05-27]
+   File: Frontend/Web/src/pages/BookingWizard.tsx
+   State type: WizardData interface (all 5 steps merged into one flat object)
+
+   WizardData interface (final, includes Journey B fields):
+     Step 1: serviceTypeId, serviceTypeName, serviceSubTypeId, serviceSubTypeName,
+             acTypeId, acTypeName, serviceBasePrice, otherNote,
+             selectedEquipmentId [B-S1], selectedEquipmentName [B-S1]
+     Step 2: pincode, zoneId, zoneName, addressLine1, addressLine2, cityName,
+             selectedAddressId [B-S2]
+     Step 3: slotDate, slotAvailabilityId, slotWindow, isEmergency, emergencySurcharge
+     Step 4: guestName, guestMobile, mobileVerified, specialInstructions
+     Step 5: termsAccepted
+     (unitCount + couponCode/appliedCoupon/discountAmount REMOVED 2026-06-08 — see Notes on Drift.)
+
+   Main component state (Journey B additions):
+     myEquipment: CustomerEquipmentResponse[]    — loaded on mount if isLoggedIn [B-S1]
+     myAddresses: CustomerAddressResponse[]       — sorted default-first [B-S2]
+     myMobile: string                             — from ProfileService.getMyProfile() [B-S4]
+     (loyaltyOffers REMOVED 2026-06-08 — coupon feature dropped from wizard.)
+
+   Component tree:
+     BookingWizard (orchestrator: state, step counter, submit handler)
+       Step1 (B-S1 equipment quick-select + categories + sub-types + AC type)
+       Step2 (B-S2 saved address quick-select + PIN → address reveal)
+       Step3 (14-day calendar + window cards + emergency)
+       Step4 (B-S4 read-only profile OR guest OTP + special instructions)
+       Step5 (summary cards + pricing + T&C + CTA)
+       SummaryCard (reusable sub-component used in Step5)
+
+   Data Loading Strategy (Journey B):
+     On wizard mount, when isLoggedIn:
+       - EquipmentService.getMyEquipment() → filter isActive
+       - AddressService.getMyAddresses()   → sort default first
+       - ProfileService.getMyProfile()     → extract mobileNumber
+     All 3 calls in parallel; each has its own catch(() => []) fallback.
+     Catalog (categories, services, AC types) loaded for all users (anonymous + logged-in).
+
+   Journey B isStepValid rules:
+     Step 4: isLoggedIn ? true : (guestName.length >= 2 AND mobileVerified)
+
+   Catalog loaded once on mount: service categories, services, AC types.
+   No slot holds; booking creation is idempotent via X-Idempotency-Key.
+   Both journeys fully implemented as of 2026-05-27.
 
 5. BOOKING ENGINE API CONTRACT — STABLE (audited 2026-05-24)
 
@@ -2637,9 +2926,9 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
   Request DTO:    GuestBookingCreateRequest
     - ServiceId (long, required)
     - AcTypeId (long, required)
-    - TonnageId (long, required)
-    - BrandId (long, required)
-    - SlotAvailabilityId (long, required): from GET /api/booking-lookups/slots
+    - TonnageId (long?, OPTIONAL): null at booking — technician verifies on-site [changed 2026-06-08]
+    - BrandId (long?, OPTIONAL): null at booking — technician verifies on-site [changed 2026-06-08]
+    - SlotAvailabilityId (long?, conditional): required when IsEmergency=false; null for emergency [changed 2026-06-08]
     - CustomerName (string, required)
     - MobileNumber (string, required)
     - EmailAddress (string?, optional)
@@ -2652,22 +2941,35 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
     - ModelName (string?, optional)
     - IssueNotes (string?, optional)
     - SourceChannel (string, required): "web" / "mobile" / "whatsapp" / "admin"
+    - IsEmergency (bool, required): emergency flag [added 2026-06-08 — guests can book emergency]
+    - EmergencySurchargeAmount (decimal?, optional): surcharge when emergency
+    - Latitude (double?, optional): GPS latitude captured by browser geolocation at address entry [added 2026-06-09]
+    - Longitude (double?, optional): GPS longitude captured by browser geolocation at address entry [added 2026-06-09]
   Response DTO:   ApiResponse<BookingSummaryResponse>
     - BookingId (long), BookingReference (string), Status (string)
     - ServiceName (string), CustomerName (string), MobileNumber (string)
     - SlotDate (DateOnly), SlotLabel (string), AddressSummary (string)
     - EstimatedPrice (decimal), IsEmergency (bool), EmergencySurchargeAmount (decimal)
   DB Tables:      Bookings (write), SlotAvailability (update — decrement AvailableCapacity),
-                  Customers (write if new guest), AuditLogs (write)
+                  Customers (write if new guest), CustomerAddresses (upsert by AddressLine1+Pincode),
+                  CustomerEquipment (insert if type not already saved for customer), AuditLogs (write)
   Business Rules:
     1. Idempotency: same X-Idempotency-Key returns existing booking without creating duplicate
     2. Guest customer record created if mobile not found in Customers
-    3. SlotAvailability capacity decremented on successful booking
-    4. Booking confirmation notification triggered (WhatsApp/email/SMS)
-    5. Admin creates SR in next step: POST /api/service-requests/from-booking/{bookingId}
+    3. Address upserted by (CustomerId, AddressLine1, Pincode) — creates new if not found [confirmed 2026-06-09]
+    4. Equipment upserted by (CustomerId, EquipmentType) — creates minimal record if type not present;
+       EquipmentName = "{AcTypeName} AC", BrandName empty (technician fills on-site) [added 2026-06-09]
+    5. SlotAvailability capacity decremented on successful booking — SKIPPED for emergency (no slot)
+    6. Booking confirmation notification triggered (WhatsApp/email/SMS)
+    7. Admin creates SR in next step: POST /api/service-requests/from-booking/{bookingId}
+    8. Tonnage/Brand looked up + validated only when supplied; null is accepted [2026-06-08]
+    9. Emergency (IsEmergency=true): booking created with SlotAvailabilityId=null, capacity untouched;
+       EstimatedPrice = service base + EmergencySurchargeAmount [2026-06-08]
   State Transitions: → BookingStatus.Confirmed
   Failure Cases:
-    - SlotAvailabilityId not found or slot full → 400
+    - SlotAvailabilityId provided but not found / slot full → 409
+    - SlotAvailabilityId null AND IsEmergency=false → 400 ("A time slot is required")
+    - TonnageId/BrandId provided but invalid → 400
     - Missing required fields → 400
 
 ---
@@ -2679,20 +2981,125 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
   Auth:           Authorize (any authenticated)
   Headers:        X-Idempotency-Key (string?, optional)
   Request DTO:    CustomerBookingCreateRequest
-    All fields same as GuestBookingCreateRequest PLUS:
-    - IsEmergency (bool, required): emergency booking flag
-    - EmergencySurchargeAmount (decimal?, optional): surcharge if emergency
+    Same fields as GuestBookingCreateRequest (including IsEmergency + EmergencySurchargeAmount).
+    TonnageId/BrandId optional, SlotAvailabilityId conditional — identical rules to guest [2026-06-08].
+    Latitude (double?, optional) + Longitude (double?, optional): GPS coords — same as guest [added 2026-06-09].
+    CustomerId is resolved from the JWT (not a request field).
   Response DTO:   ApiResponse<BookingSummaryResponse> (same shape as guest)
-  DB Tables:      Bookings (write), SlotAvailability (write), AuditLogs (write)
+  DB Tables:      Bookings (write), SlotAvailability (write), CustomerAddresses (upsert),
+                  CustomerEquipment (insert if type not already saved), AuditLogs (write)
   Business Rules:
     1. Booking linked to authenticated customer's CustomerId (from JWT)
-    2. IsEmergency=true: bypass normal slot rules per emergency policy
-    3. EmergencySurchargeAmount recorded on booking
-    4. Same idempotency behavior as guest booking
+    2. CustomerName/MobileNumber: optional in request — resolved from existing Customer record;
+       only updated when request supplies non-empty values [fixed 2026-06-09]
+    3. Address upserted by (CustomerId, AddressLine1, Pincode) — creates new if not found
+    4. Equipment upserted by (CustomerId, EquipmentType) — creates minimal record if type not present;
+       EquipmentName = "{AcTypeName} AC", BrandName empty (technician fills on-site) [added 2026-06-09]
+    5. IsEmergency=true: bypass normal slot rules per emergency policy
+    6. EmergencySurchargeAmount recorded on booking
+    7. Same idempotency behavior as guest booking
   State Transitions: → BookingStatus.Confirmed
   Failure Cases:
-    - Slot full or unavailable → 400
-    - Invalid emergency surcharge → 400
+    - Slot provided but full/unavailable → 409
+    - SlotAvailabilityId null AND IsEmergency=false → 400
+    - Invalid emergency surcharge (< 0) → 400
+
+---
+
+### NOTES ON DRIFT (2026-06-08) — Booking-create contract relaxed for redesigned wizard
+Drift type: DB contract + request drift (API/DB required equipment + slot the redesigned wizard never sends).
+- ROOT CAUSE: The 2026-05-27 wizard redesign dropped equipment capture (brand/tonnage/model) and made
+  emergency bookings slot-less, but BOTH booking-create validators still enforced
+  `TonnageId > 0`, `BrandId > 0`, `SlotAvailabilityId > 0`. Non-nullable `long` request fields meant
+  a missing JSON value bound to 0 → validation failed → EVERY wizard booking returned 400 (not just
+  emergency/AMC). Guest DTO also lacked IsEmergency entirely, so guests could not flag emergency.
+- FIX (root cause, on backend per the mobile/contract rule — no surface hack):
+  • Request DTOs + commands: TonnageId, BrandId, SlotAvailabilityId → nullable (long?).
+  • GuestBookingCreateRequest/Command/Controller: added IsEmergency + EmergencySurchargeAmount.
+  • Validators: Tonnage/Brand validated only `.When(HasValue)`; SlotAvailabilityId required only
+    `.When(!IsEmergency)`.
+  • Both handlers: Tonnage/Brand/Slot looked up only when supplied; capacity decrement guarded;
+    emergency branch creates a slot-less booking; guest handler now records IsEmergency + surcharge.
+  • Entities: Booking.SlotAvailabilityId, BookingLine.TonnageId, BookingLine.BrandId → long?.
+    EF infers optional FK from nullable CLR type (no Configuration change needed). Response mappers
+    were already null-safe (slot/tonnage/brand null-coalesced).
+  • DB: tblBooking.SlotAvailabilityId, tblBookingLine.TonnageId/BrandId set nullable. Canonical DDL
+    (02_create_tables.sql) updated; idempotent migration in Docs/Postgres/14_booking_optional_equipment_slot.sql.
+  • Frontend: CustomerBookingCreateRequest.slotAvailabilityId optional; wizard sends
+    `slotAvailabilityId ?? undefined` and `emergencySurchargeAmount` when emergency.
+- VERIFIED: backend `dotnet build` 0 errors/0 warnings; frontend `tsc --noEmit` clean.
+
+---
+
+### NOTES ON DRIFT (2026-06-09) — GPS coordinate capture added to booking + SR detail flow
+Drift type: Missing feature — GPS coordinates were captured by browser geolocation but silently dropped before reaching the backend.
+- ROOT CAUSE: BookingWizard.tsx `handleLocationDetect` called `navigator.geolocation.getCurrentPosition()` and
+  ran reverse geocoding (Nominatim) to produce address text, but the `onUpdate()` call never included
+  `latitude`/`longitude`. Coords were also missing from `handleAddressSelect` for saved addresses.
+  The backend `CustomerAddress.Latitude/Longitude` columns existed (added 2026-04-25 schema compat) but
+  were always NULL. The `ArriveFieldJobCommand` 150m Haversine check-in gate was fully implemented but
+  completely blocked — NULL coords → distance check skipped → gate never fired.
+- FIX (Phase 1 — GPS capture activated, coordinates persisted end-to-end):
+  • BookingWizard.tsx WizardData: added `latitude: number|null`, `longitude: number|null`.
+  • `handleLocationDetect`: passes raw GPS coords (not Nominatim centroid) to `onUpdate`.
+  • `handleAddressSelect`: propagates saved address `.latitude/.longitude` to wizard state.
+  • `handleEnterDifferentAddress`: resets coords to null on new address entry.
+  • `handleConfirm`: includes `latitude`/`longitude` in the booking creation API payload.
+  • Frontend type `CustomerBookingCreateRequest`: added `latitude?: number`, `longitude?: number`.
+  • Backend `GuestBookingCreateRequest` + `CustomerBookingCreateRequest` records: added `double? Latitude, double? Longitude`.
+  • `CreateGuestBookingCommand` + `CreateCustomerBookingCommand`: added same two params.
+  • Both command handlers: save coords to `CustomerAddress.Latitude/Longitude` (create: always; update: only when non-null).
+  • `Booking.LatitudeSnapshot` + `LongitudeSnapshot` (double?): added to domain entity + EF config.
+  • BookingController: wires `request.Latitude, request.Longitude` for both endpoints.
+- FIX (Phase 2 — admin portal SR detail "View on Map" uses exact coordinates):
+  • `ServiceRequestDetailResponse`: added `double? CustomerLatitude, double? CustomerLongitude` (positional params).
+  • `ServiceRequestResponseMapper.ToDetail`: populates from `booking?.CustomerAddress?.Latitude/Longitude`.
+  • Frontend `BackendServiceRequestDetail` interface: added `customerLatitude?/customerLongitude?`.
+  • `buildBaseServiceRequest`: accepts optional `coordinates: { lat, lng }` and includes it in `location`.
+  • `mapAdminDetailToServiceRequest`: passes backend coords to `buildBaseServiceRequest.coordinates`.
+  • `SRDetailScreen.tsx` "View on Map" button: uses `https://www.google.com/maps/dir/?api=1&destination={lat},{lng}` when coordinates available, falls back to OpenStreetMap address-text search when not.
+- ACTIVATION: The `ArriveFieldJobCommand` 150m GPS check-in gate (already fully implemented in FieldWorkflowFeature.cs) now activates automatically for all new GPS-assisted bookings. No code change needed — coordinates being NULL was the only blocker.
+- DB migration required: `tblBooking.LatitudeSnapshot` and `LongitudeSnapshot` columns (double precision / FLOAT) must be added to the live schema. Migration file: `Backend/Docs/Postgres/17_booking_gps_snapshot.sql`.
+- FLOW STABLE: YES — future agent can work GPS-capture without source reads.
+
+---
+
+### NOTES ON DRIFT (2026-06-09) — Equipment save + address persist + CustomerName null fix
+
+Drift type: Missing feature (equipment save) + request drift (CustomerName required on customer booking but not sent).
+
+**Root causes fixed:**
+
+1. **CustomerName required on authenticated booking (400 on every logged-in booking)**
+   - `CreateCustomerBookingCommandValidator` had `CustomerName NotEmpty()` — frontend never sends it for
+     logged-in users (identity from JWT). Result: every `POST /api/bookings/customer` returned 400;
+     address/equipment never persisted.
+   - FIX: `CreateCustomerBookingCommand.CustomerName/MobileNumber` → `string?` (nullable).
+     Validator: both validated only `.When(not null/empty)`.
+     Handler: null-safe update — only overwrites existing Customer.CustomerName/MobileNumber when request
+     supplies non-empty values; falls back to `_currentUserContext.UserName` on new customer create.
+   - Frontend: `CustomerBookingCreateRequest` now includes optional `customerName?/mobileNumber?`.
+     `handleConfirm` sends `data.guestName || user.fullName` and `myMobile` for logged-in path.
+
+2. **Equipment never saved on booking**
+   - Neither handler created `CustomerEquipment` records. Portal `/portal/equipment` always showed empty.
+   - FIX: Both handlers (guest + customer) now call `HasCustomerEquipmentByTypeAsync(customerId, acTypeName)`
+     and insert a minimal `CustomerEquipment` record if the type is not already registered.
+     Record shape: `EquipmentName = "{AcTypeName} AC"`, `EquipmentType = acTypeName`, `BrandName = ""`
+     (technician fills brand/model on-site). Prevents duplicate inserts on repeat bookings of same type.
+   - New repository methods: `AddCustomerEquipmentAsync` + `HasCustomerEquipmentByTypeAsync` added to
+     `IBookingRepository` and `BookingRepository`.
+
+3. **Step 2 manual form always showed for logged-in users**
+   - `showManualForm` initialized to `!data.selectedAddressId = !null = true`, causing manual entry form
+     to render simultaneously with the saved-address card list.
+   - FIX: `showManualForm` initialized to `!(isLoggedIn && myAddresses.length > 0) && !data.selectedAddressId`.
+     Auto-select `useEffect` fires once on mount (guarded by `autoSelectDone` ref) and calls
+     `handleAddressSelect(myAddresses[0])` — pre-selects the default (first sorted) address.
+     Button label: "Enter a different address" → "Use a different address".
+
+- DB migration required: no new columns — `CustomerEquipment` table already exists (13_customer_app_tables.sql).
+- FLOW STABLE: YES — booking create → address upsert + equipment upsert + booking record all in one transaction.
 
 ---
 
@@ -3667,7 +4074,9 @@ Ticket Detail UX
 Screens: My Profile, My Addresses, Notification Preferences, Refer a Friend / Loyalty (future-ready), Terms & Conditions, Privacy Policy.
 
 My Profile fields
-- Name, Email, Mobile (verified flag), Secondary Contacts, Preferred Language, KYC fields (if required), Saved Payment Methods (tokenized), Loyalty Info.
+- Name (editable), Email (read-only), Mobile (read-only — OTP identity anchor; change via support ticket only).
+- No password field. Customer authentication is mobile OTP only — no password exists for customer accounts.
+- Secondary Contacts, Preferred Language, KYC, Saved Payment Methods, Loyalty Info: future-ready fields, not yet implemented.
 
 My Addresses
 - CRUD for addresses with primary flag and geolocation; ability to link equipment to address.
@@ -3746,6 +4155,344 @@ Notes:
   - 2026-04-22 build remediation update: backend compile issues caused by controller-to-contract drift were corrected without changing public APIs. `BookingController`, `CustomerBookingController`, `AuthController`, `InvoiceController`, `PaymentController`, `ServiceTypesController`, and `SupportTicketController` were aligned to the existing request/response contracts and API response factory so `dotnet build` completes successfully again.
   - 2026-04-22 mobile build remediation update: the React customer app compile was restored by tightening route-wrapper typing, removing an invalid support-ticket payload field, adding explicit notification and attachment typing, normalizing mock catalog / loyalty / review adapters to the live `CatalogServiceItem` and string-date contracts, and confirming the customer app now completes both TypeScript compile and production Vite build.
   - 2026-04-23 build verification update: reran `dotnet build` in `Backend`, `node ./node_modules/typescript/lib/tsc.js --noEmit --pretty false` in `Mobile/Coolzo_MobileCustomer`, and `node ./node_modules/vite/bin/vite.js build` in the same mobile app. The backend build completed with 0 warnings and 0 errors, the TypeScript compile exited successfully, and the production bundle completed successfully with only non-fatal Vite warnings about ignored `"use client"` directives and large chunk size.
+
+# SECTION 6A — CUSTOMER WEB PORTAL (React + Vite — Frontend/Web)
+
+## Platform Identity
+- **Codebase:** `C:\Live\Coolzo\Frontend\Web\src`
+- **Stack:** React 18 + Vite + TypeScript + Tailwind CSS
+- **Auth:** JWT — `AuthContext` + `apiClient` 401 interceptor (silent refresh on demand)
+- **Token Storage:** Access token → `sessionStorage` | Refresh token → `localStorage`
+- **Portal Route Prefix:** `/portal`
+- **Layout:** `PortalLayout.tsx` — sticky sidebar (desktop) + bottom nav (mobile)
+- **Status:** Separate from Mobile App (`Mobile/Coolzo_MobileCustomer`) and Admin Portal (`Frontend/Admin`)
+
+---
+
+## MODULE: Authentication (Web Portal)
+
+### Screens
+| Route | Component | Purpose |
+|---|---|---|
+| `/login` | `Login.tsx` | Email/password or OTP login |
+| `/register` | `Register.tsx` | New customer account + OTP |
+| `/forgot-password` | `ForgotPassword.tsx` | Trigger reset email/SMS |
+| `/reset-password` | `ResetPassword.tsx` | Complete password reset |
+| `/session-expired` | `SessionExpired.tsx` | Shown on expired refresh token |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/auth/login` | Email + password login → returns `accessToken`, `refreshToken` |
+| POST | `/api/auth/otp/send` | Send OTP to mobile number |
+| POST | `/api/auth/otp/verify` | Verify OTP → returns `accessToken`, `refreshToken` |
+| GET | `/api/auth/me` | Get current authenticated user |
+| POST | `/api/auth/refresh` | Refresh access token (401 interceptor only — NOT called on reload) |
+| POST | `/api/auth/logout` | Revoke refresh token server-side |
+| POST | `/api/customer-auth/register` | Create new customer account |
+| POST | `/api/auth/forgot-password` | Initiate password reset |
+| POST | `/api/auth/reset-password` | Complete password reset with token |
+| POST | `/api/auth/change-password` | Change password for authenticated customer |
+
+### Key Architectural Decisions
+- `silentRefresh()` on page reload was removed (2026-05-26). The 401 interceptor in `apiClient.ts` handles all token expiry transparently.
+- On app init: if no tokens exist → `loading=false` immediately (0 API calls). If token exists → `GET /api/auth/me` directly; 401 interceptor refreshes and retries if expired.
+- Service: `authService.ts` | Context: `AuthContext.tsx` | Storage: `tokenStorage.ts`
+
+---
+
+## MODULE: Customer Dashboard (Web Portal)
+
+### Screen
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal` | `portal/Dashboard.tsx` | Authenticated home — bookings summary, quick actions, AMC status |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/bookings/my-bookings` | Recent bookings for dashboard preview |
+| GET | `/api/amc/customer/me` | Active AMC subscription summary |
+
+---
+
+## MODULE: My Bookings (Web Portal)
+
+### Screens
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/bookings` | `portal/BookingsList.tsx` | Paginated list of all customer bookings |
+| `/portal/bookings/:id` | `portal/BookingDetail.tsx` | Booking detail + job tracker timeline |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/bookings/my-bookings` | `pageNumber`, `pageSize` → `PagedResult<BookingListItemResponse>` |
+| GET | `/api/bookings/{bookingId}` | Admin-level booking detail |
+| GET | `/api/customer-bookings/{bookingId}` | Customer-safe booking detail |
+| POST | `/api/bookings/{bookingId}/reschedule` | Reschedule with `slotAvailabilityId`, `remarks` |
+| GET | `/api/customer-bookings/{bookingId}/service-report` | Customer service report data |
+| GET | `/api/customer-bookings/{bookingId}/service-report/pdf` | Download service report PDF (Blob) |
+| POST | `/api/bookings/customer` | Create new booking (authenticated) |
+| POST | `/api/bookings/guest` | Create new booking (guest) |
+
+- Service: `bookingService.ts`
+
+---
+
+## MODULE: AMC Dashboard (Web Portal)
+
+### Screen
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/amc` | `portal/AMCDashboard.tsx` | Active AMC contracts + visit schedule |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/amc/plans` | `isActive=true, pageSize=100` → available AMC plans |
+| GET | `/api/amc/customer/me` | Customer's active AMC subscriptions + visit schedule |
+
+- Service: `amcService.ts`
+
+---
+
+## MODULE: My Equipment (Web Portal)
+
+### Screens
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/equipment` | `portal/EquipmentList.tsx` | List all customer appliances |
+| `/portal/equipment/:id` | `portal/EquipmentDetail.tsx` | Single appliance detail + edit |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/customers/me/equipment` | List all equipment for current customer |
+| GET | `/api/customers/me/equipment/{equipmentId}` | Single equipment detail |
+| POST | `/api/customers/me/equipment` | Add new appliance |
+| PUT | `/api/customers/me/equipment/{equipmentId}` | Update appliance |
+| DELETE | `/api/customers/me/equipment/{equipmentId}` | Soft-delete appliance |
+
+- Service: `equipmentService.ts`
+- Controller: `CustomerEquipmentController` (`/api/customers/me/equipment`)
+
+---
+
+## MODULE: My Invoices (Web Portal)
+
+### Screens
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/invoices` | `portal/InvoicesList.tsx` | Paginated invoice list |
+| `/portal/invoices/:id` | `portal/InvoiceDetail.tsx` | Invoice detail + PDF download + pay |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/invoices/customer` | `pageNumber`, `pageSize` → `PagedResult<InvoiceListItemResponse>` |
+| GET | `/api/invoices/{invoiceId}` | Invoice detail |
+| GET | `/api/invoices/{invoiceId}/pdf` | Download invoice PDF (Blob) |
+
+- Service: `invoiceService.ts`
+- Controller: `InvoiceController` (Flow 6 — `GET /api/invoices/customer`)
+
+---
+
+## MODULE: Support Tickets (Web Portal)
+
+### Screens
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/support` | `portal/TicketsList.tsx` | My tickets list with status |
+| `/portal/support/:id` | `portal/TicketDetail.tsx` | Chat-style ticket thread |
+| `/portal/support/new` | `portal/NewTicket.tsx` | Raise new support ticket |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/support-tickets/my-tickets` | `pageNumber`, `pageSize` → `PagedResult<SupportTicketListItemResponse>` |
+| GET | `/api/support-tickets/{ticketId}` | Ticket detail + reply thread |
+| POST | `/api/support-tickets` | Create ticket — `subject, categoryId, priorityId, description, links?` |
+| POST | `/api/support-tickets/{ticketId}/replies` | Add reply `{ message }` |
+| POST | `/api/support-tickets/{ticketId}/close` | Close ticket with optional `remarks` |
+| POST | `/api/support-tickets/{ticketId}/reopen` | Reopen closed ticket |
+| GET | `/api/support-ticket-lookups/categories` | Ticket category options |
+| GET | `/api/support-ticket-lookups/priorities` | Ticket priority options |
+
+- Service: `ticketService.ts`
+- Note: CustomerId is NOT sent in the request body — backend resolves from JWT
+
+---
+
+## MODULE: Notifications (Web Portal)
+
+### Screen
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/notifications` | `portal/Notifications.tsx` | Notification centre — read/unread list |
+| `/portal/notification-preferences` | `portal/NotificationPreferences.tsx` | Communication channel toggles |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/customer-notifications` | `pageNumber=1, pageSize=20` → `PagedResult<CustomerNotificationResponse>` |
+| POST | `/api/customer-notifications/{notificationId}/mark-read` | Mark single notification read |
+| PATCH | `/api/notifications/mark-read` | Mark all notifications read |
+| GET | `/api/communication-preferences/me` | Load channel preference toggles |
+| PUT | `/api/communication-preferences/me` | Save channel preference changes |
+
+### DB Table
+| Table | Purpose |
+|---|---|
+| `tblCustomerNotification` | Stores per-customer in-app notifications |
+
+### CustomerNotificationResponse Fields
+`CustomerNotificationId, CustomerId, Title, Message, NotificationType, IsRead, DateCreated, LinkUrl`
+
+### Known Issue Fixed (2026-05-26)
+- **Root cause:** `tblCustomerNotification` (and 4 related CustomerApp tables) existed in EF Core but were never applied to the PostgreSQL database.
+- **Error:** `Npgsql.PostgresException: 42P01: relation "tblCustomerNotification" does not exist`
+- **Fix:** [13_customer_app_tables.sql](../Database/../Postgres/13_customer_app_tables.sql) — creates all 5 missing tables with correct constraints and indexes.
+- **Drift type:** DB contract drift — EF config existed, Postgres schema did not.
+- Service: `notificationService.ts`
+- Controller: `CustomerNotificationController` (`/api/customer-notifications`)
+- Handler: `GetMyNotificationsQueryHandler` → `ICustomerAppRepository.ListNotificationsAsync`
+
+---
+
+## MODULE: Addresses (Web Portal)
+
+### Screen
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/addresses` | `portal/Addresses.tsx` | Manage delivery/service addresses |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/customers/me/addresses` | List all addresses for current customer |
+| POST | `/api/customers/me/addresses` | Create address — `addressLabel, addressLine1, addressLine2, landmark, cityName, pincode, zoneId?, latitude?, longitude?, isDefault, stateName?, addressType?` |
+| PUT | `/api/customers/me/addresses/{addressId}` | Update address |
+| DELETE | `/api/customers/me/addresses/{addressId}` | Soft-delete address |
+| GET | `/api/booking-lookups/zones/by-pincode/{pincode}` | Resolve `zoneId` from pincode |
+
+- Service: `addressService.ts`
+- Controller: `CustomerAddressController` (`/api/customers/me/addresses`)
+
+---
+
+## MODULE: Profile (Web Portal)
+
+### Screen
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/profile` | `portal/Profile.tsx` | View and edit customer profile |
+
+### API Endpoints Used
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/customers/me/profile` | Load current profile |
+| PUT | `/api/customers/me/profile` | Update name only (email + mobile are read-only in portal) |
+
+### Auth Model — Customer Portal
+- Customer authentication is **mobile OTP only**. There is no password for customer accounts.
+- No "Change Password" screen or flow exists in the customer web portal.
+- Mobile number is a verified OTP identity anchor — customers cannot self-update it. To change mobile, a support ticket must be raised.
+- Email is a secondary contact field — read-only in the portal; cannot be changed by the customer.
+
+### Editable Fields
+| Field | Editable | Reason |
+|---|---|---|
+| Full Name | ✅ Yes | Used on invoices, technician greeting, support records |
+| Email Address | ❌ Read-only | Cannot be changed via self-service |
+| Mobile Number | ❌ Read-only | OTP identity anchor; change requires support verification |
+| Date of Birth | ❌ Removed | No operational relevance for AC service |
+
+### Profile Page Sections
+1. **Personal Information** — name (editable), email (read-only), mobile (read-only)
+2. **Account Card** — avatar, name, verified badge, mobile summary, Sign Out button
+3. **Account Settings** — quick-links to My Addresses (`/portal/addresses`) and Support Tickets (`/portal/support`)
+
+- Service: `profileService.ts`
+- Profile avatar in portal header links to this screen directly
+
+---
+
+## MODULE: Feedback & Referral (Web Portal)
+
+### Screens
+| Route | Component | Purpose |
+|---|---|---|
+| `/portal/feedback` | `portal/Feedback.tsx` | Submit post-service review |
+| `/portal/referral` | `portal/Referral.tsx` | Referral code + stats |
+
+---
+
+## Web Portal DB Tables (direct dependency)
+
+| Table | Module | Notes |
+|---|---|---|
+| `tblCustomer` | Profile, Auth | Core customer identity |
+| `tblCustomerAddress` | Addresses | CRUD via CustomerAddressController |
+| `tblCustomerEquipment` | Equipment | CRUD via CustomerEquipmentController |
+| `tblCustomerNotification` | Notifications | ⚠️ Created by 13_customer_app_tables.sql (was missing) |
+| `tblPromotionalOffer` | Marketing | ⚠️ Created by 13_customer_app_tables.sql (was missing) |
+| `tblCustomerReferral` | Referral | ⚠️ Created by 13_customer_app_tables.sql (was missing) |
+| `tblCustomerLoyaltyTransaction` | Loyalty | ⚠️ Created by 13_customer_app_tables.sql (was missing) |
+| `tblCustomerAppFeedback` | Feedback | ⚠️ Created by 13_customer_app_tables.sql (was missing) |
+| `tblCustomerReview` | Reviews | Exists in 02_create_tables.sql |
+| `tblBooking`, `tblBookingLine` | Bookings | Read via CustomerBookingController |
+| `tblServiceRequest` | Job Tracker | Status timeline in BookingDetail |
+| `tblInvoiceHeader`, `tblInvoiceLine` | Invoices | Read via InvoiceController |
+| `tblSupportTicket`, `tblSupportTicketReply` | Tickets | Full CRUD via SupportTicketController |
+| `tblCommunicationPreference` | Notification Prefs | Read/write via CommunicationPreferenceController |
+| `tblCustomerAMC`, `tblAMCVisitSchedule` | AMC | Read via AmcController |
+
+---
+
+## Web Portal Service Layer Map
+
+| Service File | Controller | Key Endpoints |
+|---|---|---|
+| `authService.ts` | AuthController, CustomerAuthController | otp/send, otp/verify, refresh, me, logout, register (customer portal uses OTP only — no password endpoints) |
+| `profileService.ts` | CustomerController | GET/PUT `/api/customers/me/profile` |
+| `addressService.ts` | CustomerAddressController | CRUD `/api/customers/me/addresses` |
+| `equipmentService.ts` | CustomerEquipmentController | CRUD `/api/customers/me/equipment` |
+| `bookingService.ts` | BookingController, CustomerBookingController | my-bookings, detail, reschedule, service-report |
+| `amcService.ts` | AmcController | plans, customer/me |
+| `invoiceService.ts` | InvoiceController | customer invoices, detail, PDF |
+| `ticketService.ts` | SupportTicketController, SupportTicketLookupController | CRUD tickets, replies, lookups |
+| `notificationService.ts` | CustomerNotificationController, CommunicationPreferenceController | notifications, mark-read, preferences |
+| `catalogService.ts` | BookingLookupController, ServiceTypesController | services, brands, zones, slots |
+| `paymentService.ts` | PaymentController | initiate, collect, receipt, receipt PDF |
+| `reviewService.ts` | CustomerReviewController | list, submit review |
+| `marketingService.ts` | CustomerMarketingController | offers, validate coupon, referral, loyalty |
+| `cmsService.ts` | CustomerContentController | blogs, CMS blocks, changelog |
+
+---
+
+## UI Quality Pass — All 40 Screens (2026-06-09)
+
+A comprehensive quality audit and fix pass was completed across all 40 screens of the customer web portal against the three `New UI Format.txt` section-7 gates.
+
+**Gates applied:**
+- Responsive Gate: no horizontal scroll, correct nav per breakpoint, grids collapse on mobile, fixed bars reserve space
+- Component/Consistency Gate: buttons `rounded-lg`, cards `rounded-xl`, inputs `rounded-lg`, loading + empty + error states for data pages
+- Accessibility Gate: single `<h1>`, semantic HTML, `htmlFor`/`id` on all form inputs, `aria-label` on icon-only buttons, touch targets ≥ 44px, WCAG AA contrast
+
+**Screens covered (all 🟢 STABLE):**
+
+| Batch | Screens | Key fixes applied |
+|---|---|---|
+| Batch 1 (public marketing) | Home, Services, ServiceDetail, AMC, About, WhyCoolzo, Reviews, Blog, BlogDetail, Contact | FAQ aria-expanded; newsletter htmlFor/id; share button aria-label + 44px targets; service search sr-only label; radius conformance throughout |
+| Batch 2 (transactional/auth) | BookingWizard, BookingConfirmation, Terms, Privacy, Login, Register, ForgotPassword, ResetPassword, SessionExpired, Maintenance | h2→h1 on all auth screens; htmlFor/id on all auth form inputs; Eye/EyeOff toggle aria-label; OTP digit aria-labels; sr-only h1 on BookingWizard; radius conformance throughout |
+| Batch 3 (core portal) | Dashboard, BookingsList, BookingDetail, AMCDashboard, EquipmentList, EquipmentDetail, InvoicesList, InvoiceDetail, Profile, Addresses | Icon-only button aria-labels (Call technician, View/Pay/Download invoice, Download report, Cancel booking); htmlFor/id on Profile and Addresses modal form inputs; Addresses modal close + menu button aria-labels; bulk radius conformance (179 violations fixed) |
+| Batch 4 (support/engagement) | TicketsList, TicketDetail, NewTicket, Notifications, Referral, Feedback, ErrorPage, NotFound, Layout (Navbar/Footer), PortalLayout | Icon-only button aria-labels (View ticket, Attach file, Send message); Footer social icon aria-label + 44px targets; htmlFor/id on NewTicket Subject/Category/Priority/Description; bulk radius conformance |
+
+**Tracker:** `Frontend/Web/UI_RESPONSIVENESS_TRACKER.md` — all 40 screens documented at stable contract level.
+
+---
 
 # SECTION 7 — ADMIN OPERATIONS
 
@@ -6010,6 +6757,633 @@ tblPartsReturn (GapPhaseA)
 
 ---
 
+# SECTION 8 — EXTENDED PLATFORM MODULES
+
+---
+
+## MODULE: Lead Management
+
+Entry Points:         Public website inquiry form (AllowAnonymous), Admin lead list (/admin/leads)
+UI Trigger:           Customer submits inquiry form; Admin opens Leads list
+API Endpoint Group:   LeadController — /api/leads
+
+API Routes:
+  POST   /api/leads                              — Create Lead (AllowAnonymous) → LeadResponse
+  GET    /api/leads                              — Search Leads (Policy=ServiceRequestRead) → PagedResult<LeadListItemResponse>
+  GET    /api/leads/analytics                    — Get Lead Analytics (Policy=ServiceRequestRead) → LeadAnalyticsResponse
+  GET    /api/leads/{leadId}                     — Get Lead Detail (Policy=ServiceRequestRead) → LeadDetailResponse
+  PUT    /api/leads/{leadId}/assign              — Assign Lead to User (Policy=ServiceRequestUpdate) → LeadResponse
+  PUT    /api/leads/{leadId}/status              — Update Lead Status (Policy=ServiceRequestUpdate) → LeadResponse
+  POST   /api/leads/{leadId}/convert-to-booking  — Convert Lead → Booking (Policy=BookingCreate) → LeadResponse
+  POST   /api/leads/{leadId}/convert-to-sr       — Convert Lead → Service Request (Policy=ServiceRequestCreate) → LeadResponse
+  POST   /api/leads/{leadId}/notes               — Add Lead Note (Policy=ServiceRequestUpdate) → LeadResponse
+
+Request DTOs:
+  CreateLeadRequest:
+    CustomerName (string, required), MobileNumber (string, required), EmailAddress (string, optional)
+    SourceChannel (string, required), AddressLine1, AddressLine2, CityName, Pincode
+    ServiceId (long?), AcTypeId (long?), TonnageId (long?), BrandId (long?)
+    SlotAvailabilityId (long?), InquiryNotes (string, optional)
+  AssignLeadRequest:      AssignedUserId (long), Remarks (string?)
+  UpdateLeadStatusRequest: LeadStatus (string), Remarks (string?), LostReason (string?)
+  ConvertLeadToBookingRequest: ServiceId, AcTypeId, TonnageId, BrandId, SlotAvailabilityId, AddressLine1, AddressLine2, CityName, Pincode, InquiryNotes
+  ConvertLeadToServiceRequestRequest: same shape as ConvertLeadToBookingRequest
+  AddLeadNoteRequest:     NoteText (string, required), IsInternal (bool)
+
+Response DTOs:
+  LeadResponse:         LeadId, LeadStatus, CustomerName, MobileNumber, assigned user details
+  LeadDetailResponse:   Full lead detail including notes, assignment history, conversion info
+  LeadListItemResponse: Paged list item with status, channel, date
+  LeadAnalyticsResponse: Aggregated lead funnel stats filtered by date range
+
+Search Filters (GET /api/leads):
+  searchTerm, leadStatus, sourceChannel, createdFrom (DateOnly), createdTo (DateOnly)
+  pageNumber (default 1), pageSize (default 20)
+
+Analytics Filters (GET /api/leads/analytics):
+  fromDate (DateOnly?), toDate (DateOnly?)
+
+DB Tables:
+  Lead             — master lead record (LeadId, CustomerName, MobileNumber, EmailAddress, SourceChannel, LeadStatus, CurrentStatus, ServiceId, AddressLine1…Pincode, InquiryNotes, ConvertedBookingId?, ConvertedSRId?)
+  LeadAssignment   — assignment history (LeadAssignmentId, LeadId FK, AssignedUserId, Remarks, DateCreated)
+  LeadConversion   — conversion record (LeadConversionId, LeadId FK, ConversionType [Booking|SR], ConvertedEntityId, DateConverted)
+  LeadNote         — notes (LeadNoteId, LeadId FK, NoteText, IsInternal, CreatedBy, DateCreated)
+  LeadSource       — source channel master (LeadSourceId, SourceName, IsActive)
+  LeadStatusHistory — status transitions (LeadStatusHistoryId, LeadId FK, OldStatus, NewStatus, Remarks, ChangedBy, DateChanged)
+
+Business Rules:
+  1. Lead creation is open to anonymous users (public inquiry form) — no authentication required.
+  2. Lead must be assigned to an admin user before status can progress beyond New.
+  3. Status transitions are logged to LeadStatusHistory on every UpdateLeadStatus call.
+  4. Convert to Booking: creates a full Booking record; sets Lead.ConvertedBookingId and status = Converted.
+  5. Convert to SR: creates a ServiceRequest directly; sets Lead.ConvertedSRId and status = Converted.
+  6. A lead can only be converted once — second conversion attempt returns a conflict error.
+  7. Notes marked IsInternal=true are visible to admin only, not the customer.
+  8. LostReason is mandatory when UpdateLeadStatus sets LeadStatus = Lost.
+
+State Transitions:
+  New → Assigned (PUT /assign)
+  Assigned → Contacted (PUT /status)
+  Contacted → Qualified | Lost (PUT /status)
+  Qualified → Converted (POST /convert-to-booking or /convert-to-sr)
+  Any → Lost (PUT /status, LostReason required)
+
+Failure Cases:
+  POST /api/leads/{id}/convert-to-booking — Lead already converted → 409 Conflict
+  PUT /api/leads/{id}/status with LeadStatus=Lost and no LostReason → 422 Unprocessable
+  GET /api/leads/{leadId} with non-existent ID → 404 Not Found
+
+Notes on Drift:
+  Module was implemented under GapPhaseA feature folder — not previously documented.
+  Application layer: Features/GapPhaseA/Lead/LeadManagementFeature.cs + LeadManagementPhaseBFeature.cs
+
+---
+
+## MODULE: Installation Management
+
+Entry Points:         Public installation inquiry form (AllowAnonymous), Admin installation list (/admin/installations)
+UI Trigger:           Customer submits installation request; Admin manages lifecycle
+API Endpoint Group:   InstallationController + InstallationSurveyController + InstallationProposalController + InstallationExecutionController
+
+API Routes:
+
+  InstallationController (/api/installations):
+    POST   /api/installations                                         — Create Installation Request (AllowAnonymous) → InstallationSummaryResponse
+    GET    /api/installations                                         — List Installations (Authorize) → PagedResult<InstallationListItemResponse>
+    GET    /api/installations/{installationId}                        — Get Installation Detail (Authorize) → InstallationDetailResponse
+    POST   /api/installations/orders                                  — Create Installation Order (Policy=ServiceRequestUpdate) → InstallationOrderResponse
+    POST   /api/installations/orders/{installationOrderId}/survey-report        — Submit Survey Report → InstallationOrderResponse
+    POST   /api/installations/orders/{installationOrderId}/commissioning-certificate — Create Commissioning Certificate → CommissioningCertificateResponse
+
+  InstallationSurveyController (/api/installations/{installationId}):
+    POST   /api/installations/{installationId}/schedule-survey        — Schedule Survey (Authorize) → InstallationSummaryResponse
+    POST   /api/installations/{installationId}/submit-survey          — Submit Survey Results (Authorize) → InstallationSummaryResponse
+
+  InstallationProposalController (/api/installations/{installationId}):
+    POST   /api/installations/{installationId}/proposal               — Create Proposal (Authorize) → InstallationSummaryResponse
+    POST   /api/installations/{installationId}/proposal/approve       — Approve Proposal (Authorize) → InstallationSummaryResponse
+    POST   /api/installations/{installationId}/proposal/reject        — Reject Proposal (Authorize) → InstallationSummaryResponse
+
+  InstallationExecutionController (/api/installations/{installationId}):
+    POST   /api/installations/{installationId}/create-order           — Create Execution Order (Authorize) → InstallationSummaryResponse
+    POST   /api/installations/{installationId}/start                  — Start Installation (Authorize) → InstallationSummaryResponse
+    POST   /api/installations/{installationId}/checklist              — Save Installation Checklist (Authorize) → InstallationSummaryResponse
+    POST   /api/installations/{installationId}/complete               — Complete Installation (Authorize) → InstallationSummaryResponse
+    POST   /api/installations/{installationId}/commission             — Generate Commissioning Record (Authorize) → InstallationSummaryResponse
+
+Request DTOs:
+  CreateInstallationRequest:
+    LeadId (long?), CustomerName, MobileNumber, EmailAddress, SourceChannel
+    AddressLine1, AddressLine2, CityName, Pincode
+    InstallationType (string), NumberOfUnits (int), SiteNotes (string?), PreferredSurveyDateUtc (datetime?)
+  CreateInstallationOrderRequest:
+    LeadId, ServiceRequestId, CustomerId, CustomerAddressId, TechnicianId
+    ScheduledInstallationDateUtc, InstallationChecklistJson (string)
+  ScheduleInstallationSurveyRequest: SurveyDateUtc, TechnicianId, Remarks
+  SubmitInstallationSurveyRequest:
+    SiteConditionSummary, ElectricalReadiness, AccessReadiness, SafetyRiskNotes
+    RecommendedAction, EstimatedMaterialCost (decimal?), MeasurementsJson, PhotoUrlsJson
+    Items (survey checklist items)
+  CreateInstallationProposalRequest: ProposalRemarks, Lines (line items)
+  ApproveInstallationProposalRequest: CustomerRemarks
+  RejectInstallationProposalRequest: CustomerRemarks
+  CreateInstallationExecutionOrderRequest: TechnicianId, ScheduledInstallationDateUtc, HelperCount, ExecutionRemarks
+  StartInstallationRequest: Remarks
+  CompleteInstallationRequest: WorkSummary
+  SaveInstallationChecklistRequest: Items
+  GenerateInstallationCommissioningRequest:
+    CustomerConfirmationName, CustomerSignatureName, ChecklistJson, Remarks, IsAccepted (bool)
+  SubmitSurveyReportRequest (orders route):
+    SurveyDecision, SiteConditionSummary, ElectricalReadiness, AccessReadiness
+    SafetyRiskNotes, RecommendedAction, EstimatedMaterialCost, SyncDeviceReference, SyncReference
+  CreateCommissioningCertificateRequest:
+    CustomerConfirmationName, ChecklistJson, Remarks, IsAccepted (bool)
+
+DB Tables:
+  InstallationLead           — installation inquiry record linked to lead
+  InstallationOrder          — confirmed installation job (OrderId, InstallationId FK, TechnicianId, ScheduledDateUtc, Status)
+  InstallationProposal       — pricing proposal (ProposalId, InstallationId FK, Status, ProposalRemarks)
+  InstallationProposalLine   — line items in proposal (ProposalLineId, ProposalId FK, Description, Qty, UnitPrice)
+  InstallationStatusHistory  — status transitions (StatusHistoryId, InstallationId FK, OldStatus, NewStatus, ChangedBy, DateChanged)
+  InstallationSurvey         — pre-installation site survey record
+  InstallationSurveyItem     — individual survey checklist items
+  InstallationChecklist      — installation checklist master / instance
+  InstallationChecklistResponse — technician responses to checklist
+  CommissioningCertificate   — post-installation commissioning sign-off (CertId, InstallationOrderId FK, CustomerConfirmationName, IsAccepted, DateCreated)
+  SiteSurveyReport           — structured site survey report linked to InstallationOrder
+
+Business Rules:
+  1. Installation creation is AllowAnonymous — public inquiry form, linked to optional LeadId.
+  2. Lifecycle: Request → Survey Scheduled → Survey Submitted → Proposal Created → Proposal Approved/Rejected → Execution Order → Started → Checklist Saved → Completed → Commissioned.
+  3. Status transitions are recorded in InstallationStatusHistory at every lifecycle step.
+  4. Survey must be submitted before a Proposal can be created.
+  5. Proposal approval triggers the execution phase; rejection returns to survey/negotiation.
+  6. Commissioning certificate requires customer confirmation name and IsAccepted=true for the installation to reach fully closed status.
+  7. Application layer lives in Features/GapPhaseA/Installation (create) and Features/GapPhaseC/Installation (full lifecycle).
+
+State Transitions:
+  New → SurveyScheduled (/schedule-survey)
+  SurveyScheduled → SurveySubmitted (/submit-survey)
+  SurveySubmitted → ProposalCreated (/proposal)
+  ProposalCreated → ProposalApproved (/proposal/approve) | ProposalRejected (/proposal/reject)
+  ProposalApproved → ExecutionOrderCreated (/create-order)
+  ExecutionOrderCreated → Started (/start)
+  Started → InProgress (/checklist)
+  InProgress → Completed (/complete)
+  Completed → Commissioned (/commission)
+
+Failure Cases:
+  Survey submission without prior survey scheduling → 422 Unprocessable
+  Proposal creation before survey submission → 422 Unprocessable
+  Commissioning with IsAccepted=false → 422 — customer must accept to commission
+  GET /api/installations/{id} — non-existent ID → 404 Not Found
+
+Notes on Drift:
+  Module split across two GapPhase feature sets:
+    GapPhaseA → InstallationFeature.cs (create + basic queries)
+    GapPhaseC → InstallationExecutionFeature, InstallationManagementFeature, InstallationProposalFeature, InstallationSurveyFeature, InstallationLifecycleSupport
+  Not previously documented anywhere in ProjectOverview.
+
+---
+
+## MODULE: Branch Management
+
+Entry Points:         Admin Portal — Branch Settings (/admin/settings/branches)
+UI Trigger:           Admin navigates to branch list; creates or edits a branch
+API Endpoint Group:   BranchController — /api/branches
+
+API Routes:
+  GET    /api/branches             — List / Search Branches (Policy=UserRead) → IReadOnlyCollection<BranchResponse>
+  GET    /api/branches/{branchId}  — Get Branch by ID (Policy=UserRead) → BranchResponse
+  POST   /api/branches             — Create Branch (Policy=UserCreate) → BranchResponse
+  PUT    /api/branches/{branchId}  — Update Branch (Policy=UserUpdate) → BranchResponse
+
+Request DTOs:
+  BranchUpsertRequest:
+    Name (string, required), City (string, required), Address (string, required)
+    ManagerId (long?, optional — resolved to ManagerName from Users), Zones (string[], optional)
+    IsActive (bool, required)
+
+Response DTOs:
+  BranchResponse:
+    BranchId (int), Name, City, Address, ManagerId (long?), ManagerName (string?)
+    Zones (string[]), IsActive (bool)
+    TechnicianCount (int — live count of active Technician + Helper users linked to this BranchId)
+    ServiceRequestCount (int — live count of non-cancelled SRs linked to this BranchId)
+
+Search Filters (GET /api/branches):
+  searchTerm (string?), isActive (bool?)
+
+DB Tables / Storage:
+  DynamicMasterRecord — Branches are stored as dynamic master records with MasterType="Branch"
+    MasterCode   = slug + GUID (auto-generated, max 64 chars)
+    MasterLabel  = Branch name
+    MasterValue  = JSON payload: { City, Address, ManagerId, ManagerName, Zones[] }
+    Description  = Address (denormalized for quick display)
+    IsActive     = active flag
+  Users.BranchId    — FK linking users (technicians/helpers) to a branch
+  ServiceRequests.BranchId — FK linking SRs to a branch
+
+Business Rules:
+  1. Branch is not a dedicated table — stored in DynamicMasterRecord with MasterType="Branch".
+  2. On GET, TechnicianCount is computed live: count of Users with IsActive=true, IsDeleted=false, BranchId=branchId, and Role = Technician or Helper.
+  3. ServiceRequestCount is computed live: count of SRs with BranchId=branchId and CurrentStatus ≠ Cancelled.
+  4. ManagerId is optional; if supplied, ManagerName is resolved from Users table at save time (denormalized into JSON payload).
+  5. MasterCode is auto-generated slug + UUID — never editable after creation.
+  6. Zones is a free-text list of zone names (not FK references) stored in the JSON payload.
+  7. Controller directly queries CoolzoDbContext — no CQRS mediator for Branch (direct EF Core access pattern).
+
+Failure Cases:
+  GET /api/branches/{branchId} with wrong MasterType or IsDeleted=true → 404 Not Found
+  PUT /api/branches/{branchId} — branch not found or deleted → 404 Not Found
+
+Notes on Drift:
+  Branch uses DynamicMasterRecord pattern (not a dedicated tblBranch table).
+  Live count queries run on every GET — no materialized view.
+  Not previously documented in ProjectOverview.
+
+---
+
+## MODULE: Campaign Management
+
+Entry Points:         Admin Portal — Marketing / Campaign screen (/admin/marketing/campaigns)
+UI Trigger:           Admin creates a campaign to batch-schedule bookings for a service + zone
+API Endpoint Group:   CampaignController — /api/campaigns
+
+API Routes:
+  POST   /api/campaigns   — Create Campaign (Policy=BookingCreate) → CampaignResponse
+
+Request DTOs:
+  CreateCampaignRequest:
+    CampaignName (string, required)
+    ServiceId (long, required)
+    ZoneId (long, required)
+    SlotAvailabilityId (long, required)
+    PlannedBookingCount (int, required)
+    StartDateUtc (datetime, required)
+    EndDateUtc (datetime, required)
+    Notes (string, optional)
+
+Response DTOs:
+  CampaignResponse: CampaignId, CampaignName, ServiceId, ZoneId, SlotAvailabilityId, PlannedBookingCount, StartDateUtc, EndDateUtc, Notes, Status, DateCreated
+
+DB Tables:
+  Campaign — campaign master record (CampaignId, CampaignName, ServiceId FK, ZoneId FK, SlotAvailabilityId FK, PlannedBookingCount, StartDateUtc, EndDateUtc, Notes, Status, CreatedBy, DateCreated)
+
+Business Rules:
+  1. Campaign creation requires Policy=BookingCreate — operations/admin role minimum.
+  2. Campaign defines a batch booking intent for a service in a specific zone and slot.
+  3. Only POST (create) is implemented — list, detail, and cancel endpoints are not yet built.
+  4. Application layer: Features/GapPhaseA/Campaign/CreateCampaignCommand.
+
+Failure Cases:
+  Non-existent ServiceId / ZoneId / SlotAvailabilityId → 422 Unprocessable (FK validation in handler)
+
+Notes on Drift:
+  Only Campaign create endpoint is implemented; read/update/cancel not yet built.
+  Not previously documented in ProjectOverview.
+
+---
+
+## MODULE: Support Tickets
+
+Entry Points:         Customer Portal — My Support (raise ticket); Admin Portal — Support Queue
+UI Trigger:           Customer clicks "Raise Ticket"; Admin opens support queue
+API Endpoint Group:   SupportTicketController + SupportTicketEscalationController + SupportTicketLookupController + SupportTicketReplyController
+
+API Routes:
+
+  SupportTicketController (/api/support-tickets):
+    POST   /api/support-tickets                                      — Create Ticket (Authorize) → SupportTicketDetailResponse
+    GET    /api/support-tickets                                      — Search Tickets (Policy=SupportRead) → PagedResult<SupportTicketListItemResponse>
+    GET    /api/support-tickets/{supportTicketId}                    — Get Ticket Detail (Authorize) → SupportTicketDetailResponse
+    GET    /api/support-tickets/my-tickets                           — Get My Tickets (Authorize, JWT-scoped) → PagedResult | SupportTicketCountResponse
+    POST   /api/support-tickets/{supportTicketId}/assign             — Assign Ticket (Policy=SupportManage) → SupportTicketDetailResponse
+    POST   /api/support-tickets/{supportTicketId}/change-status      — Change Status (Policy=SupportManage) → SupportTicketDetailResponse
+    POST   /api/support-tickets/{supportTicketId}/change-priority    — Change Priority (Policy=SupportManage) → SupportTicketDetailResponse
+    POST   /api/support-tickets/{supportTicketId}/close              — Close Ticket (Authorize) → SupportTicketDetailResponse
+    POST   /api/support-tickets/{supportTicketId}/reopen             — Reopen Ticket (Authorize) → SupportTicketDetailResponse
+
+  SupportTicketEscalationController (/api/support-tickets/{supportTicketId}):
+    GET    /api/support-tickets/{supportTicketId}/escalations        — Get Escalations (Authorize) → IReadOnlyCollection<SupportTicketEscalationResponse>
+    POST   /api/support-tickets/{supportTicketId}/escalate           — Escalate Ticket (Policy=SupportManage) → SupportTicketDetailResponse
+
+  SupportTicketReplyController (/api/support-tickets/{supportTicketId}/replies):
+    GET    /api/support-tickets/{supportTicketId}/replies            — Get Replies (Authorize) → IReadOnlyCollection<SupportTicketReplyResponse>
+    POST   /api/support-tickets/{supportTicketId}/replies            — Add Reply (Authorize) → SupportTicketReplyResponse
+
+  SupportTicketLookupController (/api/support-ticket-lookups):
+    GET    /api/support-ticket-lookups/categories                    — Get Categories → IReadOnlyCollection<LookupItemResponse>
+    GET    /api/support-ticket-lookups/priorities                    — Get Priorities → IReadOnlyCollection<LookupItemResponse>
+    GET    /api/support-ticket-lookups/statuses                      — Get Statuses → IReadOnlyCollection<LookupItemResponse>
+    GET    /api/support/categories                                   — Alias for categories (AllowAnonymous alias route)
+
+Request DTOs:
+  CreateSupportTicketRequest:
+    CustomerId (long, required), Subject (string, required), CategoryId (long, required)
+    PriorityId (long, required), Description (string, required)
+    Links (CreateSupportTicketLinkRequest[], optional — linked entities e.g. BookingId, SRId)
+  AssignSupportTicketRequest:      AssignedUserId (long), Remarks (string?)
+  ChangeSupportTicketStatusRequest: Status (string), Remarks (string?)
+  ChangeSupportTicketPriorityRequest: PriorityId (long), Remarks (string?)
+  SupportTicketActionRequest:      Remarks (string?) — used for Close and Reopen
+  EscalateSupportTicketRequest:    EscalationTarget (string), EscalationRemarks (string?)
+  AddSupportTicketReplyRequest:    ReplyText (string, required), IsInternalOnly (bool)
+
+Response DTOs:
+  SupportTicketDetailResponse: Full ticket with status, priority, category, assignments, replies, escalations, links
+  SupportTicketListItemResponse: Paged list item with TicketNumber, Subject, Status, Priority, CustomerName, DateCreated
+  SupportTicketCountResponse: TotalCount (int) — returned when countOnly=true
+  SupportTicketReplyResponse: ReplyId, TicketId, ReplyText, IsInternalOnly, AuthorName, DateCreated
+  SupportTicketEscalationResponse: EscalationId, TicketId, EscalationTarget, EscalationRemarks, EscalatedBy, DateEscalated
+
+Search Filters (GET /api/support-tickets):
+  ticketNumber, customerMobile, categoryId, priorityId, status, dateFrom, dateTo, linkedEntityType
+  pageNumber (default 1), pageSize (default 20)
+
+GET /api/support-tickets/my-tickets Query Params:
+  pageNumber, pageSize, countOnly (bool — returns SupportTicketCountResponse instead), unread (bool)
+
+DB Tables:
+  SupportTicket              — master record (TicketId, TicketNumber, CustomerId FK, Subject, CategoryId FK, PriorityId FK, Status, Description, DateCreated)
+  SupportTicketAssignment    — assignment history (AssignmentId, TicketId FK, AssignedUserId, Remarks, DateCreated)
+  SupportTicketReply         — replies (ReplyId, TicketId FK, ReplyText, IsInternalOnly, CreatedBy, DateCreated)
+  SupportTicketEscalation    — escalations (EscalationId, TicketId FK, EscalationTarget, EscalationRemarks, EscalatedBy, DateEscalated)
+  SupportTicketCategory      — category master (CategoryId, CategoryName, IsActive)
+  SupportTicketPriority      — priority master (PriorityId, PriorityName, SortOrder, IsActive)
+  SupportTicketLink          — linked entities (LinkId, TicketId FK, LinkedEntityType, LinkedEntityId)
+  SupportTicketStatusHistory — status transitions (StatusHistoryId, TicketId FK, OldStatus, NewStatus, Remarks, ChangedBy, DateChanged)
+
+Business Rules:
+  1. Any authenticated user can create a support ticket.
+  2. Customer-scoped GET /my-tickets returns only tickets belonging to the authenticated customer (JWT-scoped).
+  3. Admin search (GET /support-tickets) requires Policy=SupportRead.
+  4. Assign, change-status, change-priority, and escalate require Policy=SupportManage.
+  5. Close and Reopen can be called by any authenticated user (customer can close their own ticket).
+  6. IsInternalOnly replies are visible to admin staff only — never returned in customer-facing responses.
+  7. countOnly=true on /my-tickets returns SupportTicketCountResponse with TotalCount — no paged list.
+  8. Ticket links (SupportTicketLink) allow associating a ticket to a Booking, SR, Invoice, or other entity by type + ID.
+
+State Transitions:
+  Open → Assigned (POST /assign)
+  Assigned → InProgress | Resolved (POST /change-status)
+  Resolved → Closed (POST /close) | Reopened (POST /reopen)
+  Any → Escalated (POST /escalate)
+  Escalated → InProgress | Resolved (POST /change-status)
+
+Failure Cases:
+  GET /api/support-tickets/{id} — not found → 404
+  POST /assign with non-existent AssignedUserId → 422 Unprocessable
+  POST /escalate without Policy=SupportManage → 403 Forbidden
+
+Notes on Drift:
+  SupportTickets were referenced in Customer Portal (SECTION 6) but had no dedicated section.
+  Lookup alias route GET /api/support/categories is a redundant alias for backward compatibility.
+
+---
+
+## MODULE: Feedback Management
+
+Entry Points:         Admin Portal — Feedback Queue (/admin/feedback)
+UI Trigger:           Admin views customer reviews/feedback; responds, publishes, or flags
+API Endpoint Group:   FeedbackController — /api/feedback
+
+API Routes:
+  GET    /api/feedback                                  — List Feedback (Policy=SupportRead) → IReadOnlyCollection<SupportFeedbackResponse>
+  GET    /api/feedback/{customerReviewId}               — Get Feedback Detail (Policy=SupportRead) → SupportFeedbackResponse
+  PATCH  /api/feedback/{customerReviewId}/respond       — Respond to Feedback (Policy=SupportManage) → SupportFeedbackResponse
+  PATCH  /api/feedback/{customerReviewId}/publish       — Publish / Unpublish (Policy=SupportManage) → SupportFeedbackResponse
+  PATCH  /api/feedback/{customerReviewId}/flag          — Flag Feedback (Policy=SupportManage) → SupportFeedbackResponse
+
+Request DTOs:
+  RespondFeedbackRequest:  Response (string — admin's public response text)
+  PublishFeedbackRequest:  Publish (bool — true = publish, false = unpublish)
+  FlagFeedbackRequest:     Reason (string — reason for flagging)
+
+Query Filters (GET /api/feedback):
+  serviceId (long?, optional — filter feedback by service)
+
+Response DTOs:
+  SupportFeedbackResponse: CustomerReviewId, CustomerId, CustomerName, ServiceId, ServiceName, Rating, ReviewText, AdminResponse, IsPublished, IsFlagged, FlagReason, DateCreated, DateResponded
+
+DB Tables:
+  CustomerReview  — review/feedback record (CustomerReviewId, CustomerId FK, ServiceId FK, Rating, ReviewText, AdminResponse, IsPublished, IsFlagged, FlagReason, DateCreated, DateResponded)
+
+Business Rules:
+  1. Feedback is submitted by customers via Customer Portal (CustomerReviewController — Section 6).
+  2. FeedbackController provides admin-side management only (view, respond, publish, flag).
+  3. Policy=SupportRead required to view; Policy=SupportManage required to respond, publish, or flag.
+  4. PATCH /publish with Publish=false unpublishes a previously published review.
+  5. Flagged reviews are hidden from public display regardless of IsPublished state.
+  6. AdminResponse is a single text field — only one admin response per review (overwrites on re-respond).
+
+Failure Cases:
+  GET /api/feedback/{id} — not found → 404 Not Found
+  PATCH /respond with empty Response text → empty string is accepted (Response ?? string.Empty)
+
+Notes on Drift:
+  Feedback management was listed in Customer Portal section but had no dedicated module entry.
+  Backed by CustomerReview entity (same table used by customer-side CustomerReviewController).
+
+---
+
+## MODULE: Revisit Management
+
+Entry Points:         Admin Portal or Customer Portal — linked from Invoice or SR detail
+UI Trigger:           Admin or customer raises revisit after warranty/AMC issue; links to original job
+API Endpoint Group:   RevisitController — /api/revisit
+
+API Routes:
+  POST   /api/revisit/request                  — Create Revisit Request (Authorize) → RevisitRequestResponse
+  GET    /api/revisit/booking/{bookingId}       — Get Revisits by Booking (Authorize) → IReadOnlyCollection<RevisitRequestResponse>
+
+Request DTOs:
+  RevisitRequestCreateRequest:
+    OriginalJobCardId (long, required)
+    RevisitType (string, required — e.g. Warranty | AMC | Callback | Complaint)
+    PreferredVisitDateUtc (datetime?, optional)
+    IssueSummary (string, required)
+    RequestRemarks (string?, optional)
+    CustomerAmcId (long?, optional — link to AMC contract if AMC revisit)
+    WarrantyClaimId (long?, optional — link to warranty claim if warranty revisit)
+    ChargeAmount (decimal?, optional — 0 for free revisit, value if chargeable)
+
+Response DTOs:
+  RevisitRequestResponse:
+    RevisitRequestId, OriginalJobCardId, RevisitType, PreferredVisitDateUtc, IssueSummary
+    RequestRemarks, CustomerAmcId?, WarrantyClaimId?, ChargeAmount?, Status, DateCreated
+
+DB Tables:
+  RevisitRequest  — revisit record (RevisitRequestId, OriginalJobCardId FK → JobCard, RevisitType, PreferredVisitDateUtc, IssueSummary, RequestRemarks, CustomerAmcId FK?, WarrantyClaimId FK?, ChargeAmount?, Status, CreatedBy, DateCreated)
+
+Business Rules:
+  1. Any authenticated user can raise a revisit request.
+  2. RevisitType must be one of: Warranty, AMC, Callback, Complaint.
+  3. If RevisitType=Warranty → WarrantyClaimId should be provided (links revisit to a WarrantyClaim created via /api/warranty/claim).
+  4. If RevisitType=AMC → CustomerAmcId should be provided.
+  5. ChargeAmount = 0 or null indicates free revisit (warranty/AMC); positive value indicates a chargeable callback.
+  6. On approval, the revisit generates a new ServiceRequest linked to OriginalJobCardId.
+  7. GET /booking/{bookingId} returns all revisit requests for all jobs under a booking.
+
+Cross-Module Links:
+  WarrantyClaim.RevisitRequestId → populated when warranty claim triggers a revisit (see Warranty Management, Section 3)
+  JobCard.OriginalJobCardId → original job the revisit is raised against
+
+Failure Cases:
+  POST with non-existent OriginalJobCardId → 422 or 404 from handler
+  GET /booking/{bookingId} — booking not found → returns empty collection (not 404)
+
+Notes on Drift:
+  Revisit was referenced in Warranty Management (Section 3) as "revisit SR created" but the module itself was undocumented.
+  Application layer: Features/Revisit/Commands/CreateRevisitRequest + Features/Revisit/Queries/GetRevisitByBooking
+
+---
+
+## MODULE: Analytics & Dashboard
+
+Entry Points:         Admin Portal — Analytics Hub (/admin/analytics), Dashboard Home (/admin/dashboard)
+UI Trigger:           Admin navigates to analytics section or opens dashboard
+API Endpoint Group:   AnalyticsController (/api/analytics) + DashboardController (/api/dashboard)
+
+API Routes:
+
+  AnalyticsController (/api/analytics, Policy=AnalyticsRead):
+    GET   /api/analytics/bookings       — Booking Analytics (Policy=AnalyticsRead) → BookingAnalyticsResponse
+    GET   /api/analytics/revenue        — Revenue Analytics (Policy=AnalyticsRead) → RevenueAnalyticsResponse
+    GET   /api/analytics/technicians    — Technician Performance (Policy=AnalyticsRead) → TechnicianPerformanceResponse
+    GET   /api/analytics/customers      — Customer Analytics (Policy=AnalyticsRead) → CustomerAnalyticsResponse
+    GET   /api/analytics/support        — Support Analytics (Policy=SupportRead) → SupportAnalyticsResponse
+    GET   /api/analytics/inventory      — Inventory Analytics (Policy=AnalyticsRead) → InventoryAnalyticsResponse
+
+  DashboardController (/api/dashboard, Policy=DashboardRead):
+    GET   /api/dashboard/summary        — Dashboard Summary → DashboardSummaryResponse
+    GET   /api/dashboard/metrics        — Dashboard Metrics (date-range filterable) → DashboardMetricsResponse
+
+Common Query Filters (analytics endpoints):
+  dateFrom (DateOnly?), dateTo (DateOnly?), trendBy (string? — e.g. "day", "week", "month")
+  Per-endpoint extras:
+    /bookings:    serviceId (long?), status (string?)
+    /revenue:     serviceId (long?)
+    /technicians: technicianId (long?), status (string?)
+    /support:     status (string?)
+
+DashboardMetrics Query Filters:
+  dateFrom (DateOnly?), dateTo (DateOnly?), trendBy (string?)
+
+Response DTOs:
+  BookingAnalyticsResponse:      Booking volumes, trends, conversion rates by service/status
+  RevenueAnalyticsResponse:      Revenue totals, trends, breakdown by service
+  TechnicianPerformanceResponse: Job completion rates, avg resolution time, ratings per technician
+  CustomerAnalyticsResponse:     New vs returning customers, growth trend, engagement metrics
+  SupportAnalyticsResponse:      Ticket volumes, resolution time, category breakdown
+  InventoryAnalyticsResponse:    Stock movement, low-stock alerts, PO fulfilment stats
+  DashboardSummaryResponse:      KPI snapshot — total SRs, open jobs, revenue today, active technicians
+  DashboardMetricsResponse:      Detailed metrics with trend lines for selected date range
+
+DB Tables:
+  (Analytics are computed queries — no dedicated analytics table)
+  Source tables: Bookings, ServiceRequests, InvoiceHeaders, PaymentTransactions, Technicians, Customers,
+                 SupportTickets, JobCards, WarehouseStock, StockTransactions, CustomerReviews
+
+Business Rules:
+  1. All analytics endpoints require Policy=AnalyticsRead except /analytics/support which requires Policy=SupportRead.
+  2. DashboardController requires Policy=DashboardRead.
+  3. All analytics are computed at query time — no pre-aggregated materialized tables.
+  4. trendBy controls grouping: "day" | "week" | "month" — defaults to "month" if omitted.
+  5. Date range defaults: if dateFrom/dateTo not supplied, each query applies its own default window (typically last 30 days).
+
+Failure Cases:
+  Invalid trendBy value → handler normalises to "month" (no error thrown)
+  dateFrom > dateTo → 422 Unprocessable
+
+Notes on Drift:
+  Dashboard and Analytics were listed under "Reports & Audit" in SECTION 9 of ModuleIndex but never given a dedicated section in ProjectOverview.
+  Application layer: Features/Analytics/* (6 query handlers) + Features/Dashboard/* (2 query handlers)
+
+---
+
+## MODULE: RBAC — Users, Roles & Permissions
+
+Entry Points:         Admin Portal — User Management (/admin/users), Role Manager (/admin/roles)
+UI Trigger:           SuperAdmin creates users, defines roles, assigns permissions
+API Endpoint Group:   UserController (/api/users) + RoleController (/api/roles) + PermissionController (/api/permissions)
+
+API Routes:
+
+  UserController (/api/users):
+    GET    /api/users                          — List Users (Policy=UserRead) → PagedResult<UserResponse>
+    GET    /api/users/{userId}                 — Get User Detail (Policy=UserRead) → UserDetailResponse
+    POST   /api/users                          — Create User (Policy=UserCreate) → UserResponse
+    PUT    /api/users/{userId}                 — Update User (Policy=UserUpdate) → UserResponse
+    POST   /api/users/{userId}/deactivate      — Deactivate User (Policy=UserUpdate) → UserResponse
+    POST   /api/users/{userId}/reactivate      — Reactivate User (Policy=UserUpdate) → UserResponse
+    POST   /api/users/{userId}/reset-password  — Reset Password (Policy=UserUpdate) → UserPasswordResetResponse
+    POST   /api/users/{userId}/reset-pin       — Reset PIN (Policy=UserUpdate) → UserPasswordResetResponse
+
+  RoleController (/api/roles):
+    GET    /api/roles                          — List Roles (Policy=RoleRead) → PagedResult<RoleResponse>
+    POST   /api/roles                          — Create Role (Policy=RoleCreate) → RoleResponse
+    PUT    /api/roles/{roleId}                 — Update Role (Policy=RoleUpdate) → RoleResponse
+    GET    /api/roles/{roleId}/permissions     — Get Role Permission Snapshot (Policy=RoleRead) → RolePermissionSnapshotResponse
+    PUT    /api/roles/{roleId}/permissions     — Update Role Permissions (Policy=RoleUpdate) → RoleResponse
+
+  PermissionController (/api/permissions):
+    GET    /api/permissions                    — List Permissions (Policy=PermissionRead) → PagedResult<PermissionResponse>
+
+Request DTOs:
+  GetUsersQuery filters: pageNumber, pageSize, searchTerm, isActive (bool?), roleIds (long[]?), branchIds (int[]?), sortBy, sortOrder
+  CreateUserRequest:  UserName, Email, FullName, Password, IsActive (bool), RoleIds (long[]), BranchId (int?)
+  UpdateUserRequest:  Email, FullName, IsActive (bool), RoleIds (long[]), BranchId (int?)
+  DeactivateUserRequest: Reason (string)
+  ResetUserPasswordRequest: Reason (string)
+  CreateRoleRequest:  RoleName, DisplayName, Description, IsActive (bool), PermissionIds (long[])
+  UpdateRoleRequest:  DisplayName, Description, IsActive (bool), PermissionIds (long[])
+  UpdateRolePermissionsRequest: PermissionIds (long[])
+
+Response DTOs:
+  UserResponse:       UserId, UserName, Email, FullName, IsActive, BranchId?, Roles[]
+  UserDetailResponse: Full user with role assignments, branch detail, creation metadata
+  UserPasswordResetResponse: UserId, TemporaryPassword (or confirmation token)
+  RoleResponse:       RoleId, RoleName, DisplayName, Description, IsActive, Permissions[]
+  RolePermissionSnapshotResponse:
+    RoleId, PermissionIds[], ModuleMatrix (permission-to-module map), DataScope,
+    PermissionNames[], RoleName, DisplayName
+  PermissionResponse: PermissionId, PermissionName, DisplayName, Module, IsActive
+
+DB Tables:
+  User              — platform users (UserId, UserName, Email, FullName, PasswordHash, PinHash, IsActive, BranchId FK, IsDeleted, DateCreated)
+  Role              — role definitions (RoleId, RoleName, DisplayName, Description, IsActive, IsDeleted)
+  UserRole          — many-to-many user↔role (UserRoleId, UserId FK, RoleId FK, IsDeleted)
+  Permission        — permission definitions (PermissionId, PermissionName, DisplayName, Module, IsActive, IsDeleted)
+  RolePermission    — many-to-many role↔permission (RolePermissionId, RoleId FK, PermissionId FK, IsDeleted)
+  UserPasswordHistory — password change history (audit) (HistoryId, UserId FK, PasswordHash, DateChanged)
+  UserSession       — active sessions (SessionId, UserId FK, Token, ExpiresAt, IsRevoked)
+
+Business Rules:
+  1. User creation requires Policy=UserCreate. Users are assigned one or more RoleIds at creation.
+  2. BranchId links a user to a branch (optional — system/SuperAdmin users may have no branch).
+  3. Role assignment is many-to-many — one user can hold multiple roles.
+  4. Permission is assigned at the Role level (not directly to users).
+  5. RolePermissionSnapshot includes PermissionModuleMatrixMapper.Build() — computes a structured module-permission matrix for the frontend permission editor.
+  6. DataScope is resolved from RoleName via PermissionDataScopeMapper.Resolve() — governs what records a role can see.
+  7. Deactivate preserves the user record (soft deactivate); Reactivate re-enables without a new password.
+  8. ResetPassword generates a temporary credential (returned once in response — not stored in plain text).
+  9. ResetPin resets the field-login PIN used by technicians (separate from the web password).
+  10. PermissionNames follow the PermissionNames constants (e.g. UserRead, UserCreate, RoleUpdate, SupportManage) — never free-text strings.
+
+Failure Cases:
+  POST /api/users — duplicate UserName or Email → 409 Conflict
+  GET /api/users/{id} — not found → 404 Not Found
+  PUT /api/roles/{id}/permissions — roleId not found → 404 Not Found
+  POST /api/users/{id}/deactivate — user already inactive → 422 Unprocessable
+
+Notes on Drift:
+  RBAC was referenced throughout other modules via policy names but had no dedicated section in ProjectOverview.
+  RolePermissionSnapshotResponse is the canonical response for the admin permission editor screen.
+  Application layer: Features/User/* (7 commands/queries) + Features/Role/* (2 commands + 1 query) + Features/Permission/* (1 query)
+
+---
+
 # SECTION 9 — CONFIGURATION, NOTIFICATIONS & AUDIT
 
 1. MASTER DATA & CONFIGURATION
@@ -7187,6 +8561,7 @@ The endpoints below were discovered in the backend controller sources during the
 
 - HealthController
    - GET  /api/health — System health check (`GetAsync`)
+   - HEAD /api/health — Same action; allows uptime monitors (UptimeRobot default = HEAD) to ping without 405. Returns 200, no body. (`GetAsync`)
 
 - FieldWorkflowController
    - GET  /api/field/my-jobs — Get my field jobs (`GetMyJobsAsync`)
@@ -7257,6 +8632,7 @@ The endpoints below were discovered in the backend controller sources during the
 
 - CustomerEquipmentController
    - GET  /api/customers/me/equipment — Get my equipment (`GetMyEquipmentAsync`)
+   - GET  /api/customers/me/equipment/{equipmentId} — Get single equipment by id (`GetMyEquipmentByIdAsync`) [added 2026-05-26]
    - POST /api/customers/me/equipment — Create my equipment (`CreateEquipmentAsync`)
    - PUT  /api/customers/me/equipment/{equipmentId} — Update my equipment (`UpdateEquipmentAsync`)
    - DELETE /api/customers/me/equipment/{equipmentId} — Delete my equipment (`DeleteEquipmentAsync`)

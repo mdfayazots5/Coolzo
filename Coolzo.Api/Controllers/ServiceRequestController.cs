@@ -1,6 +1,7 @@
 using Coolzo.Application.Features.OperationsDashboard.Queries.GetDashboardSummary;
 using Coolzo.Application.Features.ServiceRequest.Commands.CreateServiceRequestFromBooking;
 using Coolzo.Application.Features.ServiceRequest.Commands.SaveServiceRequestNote;
+using Coolzo.Application.Features.ServiceRequest.Commands.UpdateServiceRequestCoordinates;
 using Coolzo.Application.Features.ServiceRequest.Commands.UpdateServiceRequestStatus;
 using Coolzo.Application.Features.ServiceRequest.Queries.GetServiceRequestDetail;
 using Coolzo.Application.Features.ServiceRequest.Queries.GetServiceRequestList;
@@ -108,5 +109,20 @@ public sealed class ServiceRequestController : ApiControllerBase
             cancellationToken);
 
         return Success(response, "Service request status updated successfully.");
+    }
+
+    [Authorize(Policy = PermissionNames.ServiceRequestUpdate)]
+    [HttpPatch("{serviceRequestId:long}/coordinates")]
+    [ProducesResponseType(typeof(ApiResponse<ServiceRequestDetailResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<ServiceRequestDetailResponse>>> UpdateCoordinatesAsync(
+        [FromRoute] long serviceRequestId,
+        [FromBody] UpdateServiceRequestCoordinatesRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new UpdateServiceRequestCoordinatesCommand(serviceRequestId, request.Latitude, request.Longitude),
+            cancellationToken);
+
+        return Success(response, "Service request coordinates updated successfully.");
     }
 }

@@ -73,7 +73,7 @@ public sealed class AmcController : ApiControllerBase
         return Success(response, "AMC plan updated successfully.");
     }
 
-    [Authorize]
+    [AllowAnonymous]
     [HttpGet("plans")]
     [ProducesResponseType(typeof(ApiResponse<PagedResult<AmcPlanResponse>>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<PagedResult<AmcPlanResponse>>>> GetPlansAsync(

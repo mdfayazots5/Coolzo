@@ -73,7 +73,9 @@ internal static class ServiceRequestResponseMapper
                     history.Remarks,
                     history.StatusDateUtc))
                 .ToArray(),
-            ToAssignmentHistory(serviceRequest));
+            ToAssignmentHistory(serviceRequest),
+            booking?.CustomerAddress?.Latitude,
+            booking?.CustomerAddress?.Longitude);
     }
 
     public static ServiceRequestListItemResponse ToListItem(DomainServiceRequest serviceRequest)

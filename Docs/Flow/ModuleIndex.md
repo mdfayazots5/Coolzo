@@ -832,20 +832,58 @@ Screens: Tax Config Editor, Tax Rate List, Tax Liability Report
 
 Dependencies: Billing, Finance, Invoicing
 
-## Module: Customer Portal (Web)
+## Module: Customer Web Portal
 
-- Section: SECTION 7
-- Keywords: customer-portal, dashboard, bookings, invoices, job-tracker, feedback
+- Section: SECTION 6A
+- Keywords: customer-portal, web-portal, dashboard, bookings, invoices, job-tracker, equipment, amc, notifications, addresses, profile, support-tickets, referral, feedback
+- Stable Contract: YES — verified 2026-05-26
+- Codebase: Frontend/Web/src (React + Vite + TypeScript + Tailwind)
 
-ProjectOverview reference: SECTION 7 — CUSTOMER PORTAL in `Docs/ProjectOverview.md`
+ProjectOverview reference: SECTION 6A — CUSTOMER WEB PORTAL in `Docs/Flow/ProjectOverview.md`
 
-API names: Get Dashboard, Get Bookings, Get Booking Timeline, Reschedule Booking, Get Estimates, Approve Estimate, Get Customer Reviews, Create Customer Review, Get Feedback, Get Feedback Detail, Respond to Feedback, Publish Feedback, Flag Feedback
+Controllers (backend):
+  CustomerNotificationController (/api/customer-notifications)
+  CustomerEquipmentController    (/api/customers/me/equipment)
+  CustomerAddressController      (/api/customers/me/addresses)
+  CustomerController             (/api/customers/me/profile)
+  BookingController              (/api/bookings/my-bookings, /api/bookings/customer, /api/bookings/guest)
+  CustomerBookingController      (/api/customer-bookings)
+  AmcController                  (/api/amc/customer/me, /api/amc/plans)
+  InvoiceController              (/api/invoices/customer)
+  SupportTicketController        (/api/support-tickets/my-tickets)
+  AuthController                 (/api/auth/*)
+  CustomerAuthController         (/api/customer-auth/*)
 
-DB tables: Customers, CustomerAddresses, ServiceRequests, Estimates, Tickets, Notifications, CustomerReviews
+DB tables (confirmed):
+  tblCustomer, tblCustomerAddress, tblCustomerEquipment,
+  tblCustomerNotification [⚠ created 2026-05-26 via 13_customer_app_tables.sql],
+  tblPromotionalOffer     [⚠ created 2026-05-26 via 13_customer_app_tables.sql],
+  tblCustomerReferral     [⚠ created 2026-05-26 via 13_customer_app_tables.sql],
+  tblCustomerLoyaltyTransaction [⚠ created 2026-05-26 via 13_customer_app_tables.sql],
+  tblCustomerAppFeedback  [⚠ created 2026-05-26 via 13_customer_app_tables.sql],
+  tblCustomerReview, tblBooking, tblServiceRequest,
+  tblInvoiceHeader, tblSupportTicket, tblCommunicationPreference,
+  tblCustomerAMC, tblAMCVisitSchedule
 
-Screens: Customer Dashboard (Web), My Bookings List, Booking Detail, Service Report View, Billing / Invoice View, Feedback List, Feedback Detail
+Portal Routes (React Router):
+  /portal             → Dashboard.tsx
+  /portal/bookings    → BookingsList.tsx
+  /portal/bookings/:id → BookingDetail.tsx
+  /portal/amc         → AMCDashboard.tsx
+  /portal/equipment   → EquipmentList.tsx
+  /portal/equipment/:id → EquipmentDetail.tsx
+  /portal/invoices    → InvoicesList.tsx
+  /portal/invoices/:id → InvoiceDetail.tsx
+  /portal/support     → TicketsList.tsx
+  /portal/support/new → NewTicket.tsx
+  /portal/support/:id → TicketDetail.tsx
+  /portal/notifications → Notifications.tsx
+  /portal/addresses   → Addresses.tsx
+  /portal/profile     → Profile.tsx
+  /portal/feedback    → Feedback.tsx
+  /portal/referral    → Referral.tsx
 
-Dependencies: Booking Engine, Notifications, Billing, Support
+Dependencies: Auth, Booking Engine, Service Request Management, Billing, AMC Contract Engine, Support Tickets, Notifications, Customer Master, Equipment Register
 
 ## Module: Customer Portal (Mobile)
 
@@ -876,3 +914,262 @@ DB tables: Technicians, TechnicianStatusLog, JobReports, JobPhotos, PartsRequest
 Screens: Today / Jobs List (Tech), SR Detail (Mobile), Arrival Check-in, Service Checklist, Parts Request, Job Report Submission
 
 Dependencies: Service Request Management, Inventory, Notifications, Maps
+
+## Module: Lead Management
+
+- Section: SECTION 8
+- Keywords: lead, inquiry, crm, convert, assign, lost, qualified, source-channel, lead-note
+- Stable Contract: YES — 9 endpoints (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Lead Management in `Docs/Flow/ProjectOverview.md`
+
+Controller: LeadController — /api/leads
+
+API routes:
+  POST   /api/leads                              — Create Lead (AllowAnonymous)
+  GET    /api/leads                              — Search Leads (Policy=ServiceRequestRead)
+  GET    /api/leads/analytics                    — Lead Analytics (Policy=ServiceRequestRead)
+  GET    /api/leads/{leadId}                     — Get Lead Detail (Policy=ServiceRequestRead)
+  PUT    /api/leads/{leadId}/assign              — Assign Lead (Policy=ServiceRequestUpdate)
+  PUT    /api/leads/{leadId}/status              — Update Lead Status (Policy=ServiceRequestUpdate)
+  POST   /api/leads/{leadId}/convert-to-booking  — Convert → Booking (Policy=BookingCreate)
+  POST   /api/leads/{leadId}/convert-to-sr       — Convert → Service Request (Policy=ServiceRequestCreate)
+  POST   /api/leads/{leadId}/notes               — Add Note (Policy=ServiceRequestUpdate)
+
+DB tables: Lead, LeadAssignment, LeadConversion, LeadNote, LeadSource, LeadStatusHistory
+
+Screens: Lead List, Lead Detail, Create Lead (public inquiry form), Assign Lead, Convert Lead
+
+Dependencies: Booking Engine, Service Request Management, Notifications
+
+## Module: Installation Management
+
+- Section: SECTION 8
+- Keywords: installation, survey, proposal, commissioning, installation-order, site-survey, checklist-execution
+- Stable Contract: YES — 16 endpoints across 4 controllers (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Installation Management in `Docs/Flow/ProjectOverview.md`
+
+Controllers:
+  InstallationController        — /api/installations              (6 endpoints)
+  InstallationSurveyController  — /api/installations/{id}         (2 endpoints)
+  InstallationProposalController — /api/installations/{id}        (3 endpoints)
+  InstallationExecutionController — /api/installations/{id}       (5 endpoints)
+
+API routes:
+  POST   /api/installations                                         — Create Installation (AllowAnonymous)
+  GET    /api/installations                                         — List Installations (Authorize)
+  GET    /api/installations/{id}                                    — Get Detail (Authorize)
+  POST   /api/installations/orders                                  — Create Installation Order (Policy=ServiceRequestUpdate)
+  POST   /api/installations/orders/{orderId}/survey-report          — Submit Survey Report
+  POST   /api/installations/orders/{orderId}/commissioning-certificate — Create Commissioning Certificate
+  POST   /api/installations/{id}/schedule-survey                   — Schedule Survey
+  POST   /api/installations/{id}/submit-survey                     — Submit Survey
+  POST   /api/installations/{id}/proposal                          — Create Proposal
+  POST   /api/installations/{id}/proposal/approve                  — Approve Proposal
+  POST   /api/installations/{id}/proposal/reject                   — Reject Proposal
+  POST   /api/installations/{id}/create-order                      — Create Execution Order
+  POST   /api/installations/{id}/start                             — Start Installation
+  POST   /api/installations/{id}/checklist                         — Save Checklist
+  POST   /api/installations/{id}/complete                          — Complete Installation
+  POST   /api/installations/{id}/commission                        — Commission (sign-off)
+
+DB tables:
+  InstallationLead, InstallationOrder, InstallationProposal, InstallationProposalLine,
+  InstallationStatusHistory, InstallationSurvey, InstallationSurveyItem,
+  InstallationChecklist, InstallationChecklistResponse,
+  CommissioningCertificate, SiteSurveyReport
+
+Screens: Installation List, Installation Detail, Schedule Survey, Survey Report, Proposal View, Execution Tracking, Commissioning Sign-Off
+
+Dependencies: Lead Management, Service Request Management, Technician Management, Billing
+
+## Module: Branch Management
+
+- Section: SECTION 8
+- Keywords: branch, office, location, manager, zone-assignment, technician-branch
+- Stable Contract: YES — 4 endpoints (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Branch Management in `Docs/Flow/ProjectOverview.md`
+
+Controller: BranchController — /api/branches
+
+API routes:
+  GET    /api/branches              — List / Search Branches (Policy=UserRead)
+  GET    /api/branches/{branchId}   — Get Branch by ID (Policy=UserRead)
+  POST   /api/branches              — Create Branch (Policy=UserCreate)
+  PUT    /api/branches/{branchId}   — Update Branch (Policy=UserUpdate)
+
+DB tables (storage): DynamicMasterRecord (MasterType="Branch") — not a dedicated table
+  Users.BranchId FK, ServiceRequests.BranchId FK — live counts computed on each GET
+
+Screens: Branch List, Branch Detail, Create/Edit Branch
+
+Dependencies: RBAC / Users & Roles, Technician Management, Service Request Management
+
+## Module: Campaign Management
+
+- Section: SECTION 8
+- Keywords: campaign, marketing, batch-booking, zone-campaign, service-promotion
+- Stable Contract: PARTIAL — 1 endpoint (create only) (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Campaign Management in `Docs/Flow/ProjectOverview.md`
+
+Controller: CampaignController — /api/campaigns
+
+API routes:
+  POST   /api/campaigns             — Create Campaign (Policy=BookingCreate)
+
+DB tables: Campaign
+
+Screens: Campaign List (admin), Create Campaign
+
+Dependencies: Booking Engine, Zones, Service Types, Slot Availability
+
+## Module: Support Tickets
+
+- Section: SECTION 8
+- Keywords: support, ticket, helpdesk, escalation, reply, category, priority, close, reopen
+- Stable Contract: YES — 16 endpoints across 4 controllers (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Support Tickets in `Docs/Flow/ProjectOverview.md`
+
+Controllers:
+  SupportTicketController         — /api/support-tickets                    (9 endpoints)
+  SupportTicketEscalationController — /api/support-tickets/{id}             (2 endpoints)
+  SupportTicketReplyController    — /api/support-tickets/{id}/replies       (2 endpoints)
+  SupportTicketLookupController   — /api/support-ticket-lookups             (3 endpoints + 1 alias)
+
+API routes:
+  POST   /api/support-tickets                              — Create Ticket (Authorize)
+  GET    /api/support-tickets                              — Search Tickets (Policy=SupportRead)
+  GET    /api/support-tickets/{id}                         — Get Detail (Authorize)
+  GET    /api/support-tickets/my-tickets                   — My Tickets (JWT-scoped, countOnly supported)
+  POST   /api/support-tickets/{id}/assign                  — Assign (Policy=SupportManage)
+  POST   /api/support-tickets/{id}/change-status           — Change Status (Policy=SupportManage)
+  POST   /api/support-tickets/{id}/change-priority         — Change Priority (Policy=SupportManage)
+  POST   /api/support-tickets/{id}/close                   — Close (Authorize)
+  POST   /api/support-tickets/{id}/reopen                  — Reopen (Authorize)
+  GET    /api/support-tickets/{id}/escalations             — Get Escalations (Authorize)
+  POST   /api/support-tickets/{id}/escalate                — Escalate (Policy=SupportManage)
+  GET    /api/support-tickets/{id}/replies                 — Get Replies (Authorize)
+  POST   /api/support-tickets/{id}/replies                 — Add Reply (Authorize)
+  GET    /api/support-ticket-lookups/categories            — Get Categories
+  GET    /api/support-ticket-lookups/priorities            — Get Priorities
+  GET    /api/support-ticket-lookups/statuses              — Get Statuses
+
+DB tables:
+  SupportTicket, SupportTicketAssignment, SupportTicketReply, SupportTicketEscalation,
+  SupportTicketCategory, SupportTicketPriority, SupportTicketLink, SupportTicketStatusHistory
+
+Screens: Support Queue (admin), My Tickets (customer portal), Ticket Detail, Escalation View, Reply Thread
+
+Dependencies: Customer Master, Service Request Management, Notifications
+
+## Module: Feedback Management
+
+- Section: SECTION 8
+- Keywords: feedback, reviews, respond, publish, flag, customer-review
+- Stable Contract: YES — 4 endpoints (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Feedback Management in `Docs/Flow/ProjectOverview.md`
+
+Controller: FeedbackController — /api/feedback
+
+API routes:
+  GET    /api/feedback                              — List Feedback (Policy=SupportRead)
+  GET    /api/feedback/{customerReviewId}           — Get Detail (Policy=SupportRead)
+  PATCH  /api/feedback/{customerReviewId}/respond   — Respond (Policy=SupportManage)
+  PATCH  /api/feedback/{customerReviewId}/publish   — Publish / Unpublish (Policy=SupportManage)
+  PATCH  /api/feedback/{customerReviewId}/flag      — Flag (Policy=SupportManage)
+
+DB tables: CustomerReview
+
+Screens: Feedback Queue (admin), Feedback Detail, Respond/Publish/Flag actions
+
+Dependencies: Customer Portal (review submission via CustomerReviewController), Support Tickets
+
+## Module: Revisit Management
+
+- Section: SECTION 8
+- Keywords: revisit, warranty-revisit, amc-revisit, callback, complaint-revisit, job-revisit
+- Stable Contract: YES — 2 endpoints (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Revisit Management in `Docs/Flow/ProjectOverview.md`
+
+Controller: RevisitController — /api/revisit
+
+API routes:
+  POST   /api/revisit/request                  — Create Revisit Request (Authorize)
+  GET    /api/revisit/booking/{bookingId}       — Get Revisits by Booking (Authorize)
+
+DB tables: RevisitRequest
+
+Screens: Raise Revisit (Invoice/SR detail), Revisit History (Booking detail)
+
+Dependencies: Warranty Management (WarrantyClaimId), AMC Contract Engine (CustomerAmcId), Service Request Management (new SR on approval)
+
+## Module: Analytics & Dashboard
+
+- Section: SECTION 8
+- Keywords: analytics, dashboard, kpi, revenue, booking-trends, technician-performance, customer-growth, inventory-analytics, support-analytics
+- Stable Contract: YES — 8 endpoints across 2 controllers (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: Analytics & Dashboard in `Docs/Flow/ProjectOverview.md`
+
+Controllers:
+  AnalyticsController  — /api/analytics   (6 endpoints, Policy=AnalyticsRead / SupportRead)
+  DashboardController  — /api/dashboard   (2 endpoints, Policy=DashboardRead)
+
+API routes:
+  GET   /api/analytics/bookings       — Booking Analytics (Policy=AnalyticsRead)
+  GET   /api/analytics/revenue        — Revenue Analytics (Policy=AnalyticsRead)
+  GET   /api/analytics/technicians    — Technician Performance (Policy=AnalyticsRead)
+  GET   /api/analytics/customers      — Customer Analytics (Policy=AnalyticsRead)
+  GET   /api/analytics/support        — Support Analytics (Policy=SupportRead)
+  GET   /api/analytics/inventory      — Inventory Analytics (Policy=AnalyticsRead)
+  GET   /api/dashboard/summary        — Dashboard Summary (Policy=DashboardRead)
+  GET   /api/dashboard/metrics        — Dashboard Metrics (Policy=DashboardRead)
+
+DB tables: (computed queries — no dedicated analytics table)
+  Source: Bookings, ServiceRequests, InvoiceHeaders, PaymentTransactions, Technicians,
+          Customers, SupportTickets, JobCards, WarehouseStock, StockTransactions, CustomerReviews
+
+Screens: Analytics Hub, Revenue Dashboard, Technician Performance, Customer Insights, Support Analytics, Inventory Analytics, Admin Dashboard Home
+
+Dependencies: Billing, Service Request Management, Technician Management, Customer Master, Support Tickets, Inventory
+
+## Module: RBAC — Users, Roles & Permissions
+
+- Section: SECTION 8
+- Keywords: rbac, users, roles, permissions, access-control, user-create, role-assign, permission-matrix, deactivate-user, reset-password, reset-pin
+- Stable Contract: YES — 14 endpoints across 3 controllers (verified 2026-05-25)
+
+ProjectOverview reference: SECTION 8 — MODULE: RBAC — Users, Roles & Permissions in `Docs/Flow/ProjectOverview.md`
+
+Controllers:
+  UserController       — /api/users        (8 endpoints)
+  RoleController       — /api/roles        (5 endpoints)
+  PermissionController — /api/permissions  (1 endpoint)
+
+API routes:
+  GET    /api/users                          — List Users (Policy=UserRead)
+  GET    /api/users/{userId}                 — Get User Detail (Policy=UserRead)
+  POST   /api/users                          — Create User (Policy=UserCreate)
+  PUT    /api/users/{userId}                 — Update User (Policy=UserUpdate)
+  POST   /api/users/{userId}/deactivate      — Deactivate User (Policy=UserUpdate)
+  POST   /api/users/{userId}/reactivate      — Reactivate User (Policy=UserUpdate)
+  POST   /api/users/{userId}/reset-password  — Reset Password (Policy=UserUpdate)
+  POST   /api/users/{userId}/reset-pin       — Reset PIN (Policy=UserUpdate)
+  GET    /api/roles                          — List Roles (Policy=RoleRead)
+  POST   /api/roles                          — Create Role (Policy=RoleCreate)
+  PUT    /api/roles/{roleId}                 — Update Role (Policy=RoleUpdate)
+  GET    /api/roles/{roleId}/permissions     — Get Role Permission Snapshot (Policy=RoleRead)
+  PUT    /api/roles/{roleId}/permissions     — Update Role Permissions (Policy=RoleUpdate)
+  GET    /api/permissions                    — List Permissions (Policy=PermissionRead)
+
+DB tables: User, Role, UserRole, Permission, RolePermission, UserPasswordHistory, UserSession
+
+Screens: User List, User Detail, Create/Edit User, Role List, Role Detail, Permission Editor (module matrix), Deactivate User
+
+Dependencies: Authentication (AuthController shares User/RefreshToken tables), Branch Management (BranchId FK), all modules (policy enforcement)

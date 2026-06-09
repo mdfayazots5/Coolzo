@@ -10,6 +10,7 @@ using Coolzo.Application.Features.Support;
 using Coolzo.Application.Features.TechnicianJob;
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Coolzo.Application.DependencyInjection;
@@ -18,6 +19,8 @@ public static class ApplicationServiceCollectionExtensions
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        services.AddMemoryCache();
+
         services.AddMediatR(configuration =>
         {
             configuration.RegisterServicesFromAssembly(typeof(ApplicationServiceCollectionExtensions).Assembly);

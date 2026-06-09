@@ -4,9 +4,9 @@ public sealed record CustomerBookingCreateRequest
 (
     long ServiceId,
     long AcTypeId,
-    long TonnageId,
-    long BrandId,
-    long SlotAvailabilityId,
+    long? TonnageId,
+    long? BrandId,
+    long? SlotAvailabilityId,
     string CustomerName,
     string MobileNumber,
     string? EmailAddress,
@@ -20,5 +20,7 @@ public sealed record CustomerBookingCreateRequest
     string? IssueNotes,
     string SourceChannel,
     bool IsEmergency,
-    decimal? EmergencySurchargeAmount
+    decimal? EmergencySurchargeAmount,
+    double? Latitude,
+    double? Longitude
 );

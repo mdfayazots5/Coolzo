@@ -6,9 +6,9 @@ namespace Coolzo.Application.Features.Booking.Commands.CreateGuestBooking;
 public sealed record CreateGuestBookingCommand(
     long ServiceId,
     long AcTypeId,
-    long TonnageId,
-    long BrandId,
-    long SlotAvailabilityId,
+    long? TonnageId,
+    long? BrandId,
+    long? SlotAvailabilityId,
     string CustomerName,
     string MobileNumber,
     string? EmailAddress,
@@ -21,4 +21,8 @@ public sealed record CreateGuestBookingCommand(
     string? ModelName,
     string? IssueNotes,
     string SourceChannel,
-    string? IdempotencyKey) : IRequest<BookingSummaryResponse>;
+    bool IsEmergency,
+    decimal? EmergencySurchargeAmount,
+    string? IdempotencyKey,
+    double? Latitude,
+    double? Longitude) : IRequest<BookingSummaryResponse>;

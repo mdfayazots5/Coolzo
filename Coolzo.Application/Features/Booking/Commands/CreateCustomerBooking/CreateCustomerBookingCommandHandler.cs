@@ -16,6 +16,7 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
     private readonly IBookingLookupRepository _bookingLookupRepository;
     private readonly IBookingReferenceGenerator _bookingReferenceGenerator;
     private readonly IBookingRepository _bookingRepository;
+    private readonly ISystemSettingRepository _systemSettingRepository;
     private readonly ICurrentDateTime _currentDateTime;
     private readonly ICurrentUserContext _currentUserContext;
     private readonly IAppLogger<CreateCustomerBookingCommandHandler> _logger;
@@ -26,6 +27,7 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
         IBookingRepository bookingRepository,
         IBookingReferenceGenerator bookingReferenceGenerator,
         IAuditLogRepository auditLogRepository,
+        ISystemSettingRepository systemSettingRepository,
         IUnitOfWork unitOfWork,
         ICurrentDateTime currentDateTime,
         ICurrentUserContext currentUserContext,
@@ -35,6 +37,7 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
         _bookingRepository = bookingRepository;
         _bookingReferenceGenerator = bookingReferenceGenerator;
         _auditLogRepository = auditLogRepository;
+        _systemSettingRepository = systemSettingRepository;
         _unitOfWork = unitOfWork;
         _currentDateTime = currentDateTime;
         _currentUserContext = currentUserContext;
@@ -67,19 +70,51 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
         var acType = await _bookingLookupRepository.GetAcTypeByIdAsync(request.AcTypeId, cancellationToken)
             ?? throw new AppException(ErrorCodes.InvalidMasterSelection, "The selected AC type is invalid.", 400);
 
-        var tonnage = await _bookingLookupRepository.GetTonnageByIdAsync(request.TonnageId, cancellationToken)
-            ?? throw new AppException(ErrorCodes.InvalidMasterSelection, "The selected tonnage is invalid.", 400);
+        // Tonnage/Brand are optional — verified on-site by the technician. Validate only when supplied.
+        Tonnage? tonnage = null;
+        if (request.TonnageId.HasValue)
+        {
+            tonnage = await _bookingLookupRepository.GetTonnageByIdAsync(request.TonnageId.Value, cancellationToken)
+                ?? throw new AppException(ErrorCodes.InvalidMasterSelection, "The selected tonnage is invalid.", 400);
+        }
 
-        var brand = await _bookingLookupRepository.GetBrandByIdAsync(request.BrandId, cancellationToken)
-            ?? throw new AppException(ErrorCodes.InvalidMasterSelection, "The selected brand is invalid.", 400);
+        Brand? brand = null;
+        if (request.BrandId.HasValue)
+        {
+            brand = await _bookingLookupRepository.GetBrandByIdAsync(request.BrandId.Value, cancellationToken)
+                ?? throw new AppException(ErrorCodes.InvalidMasterSelection, "The selected brand is invalid.", 400);
+        }
 
         var zone = await _bookingLookupRepository.GetZoneByPincodeAsync(request.Pincode, cancellationToken)
             ?? throw new AppException(ErrorCodes.ZoneNotServed, "The provided pincode is not serviceable.", 404);
 
-        var slotAvailability = await _bookingLookupRepository.GetSlotAvailabilityByIdAsync(request.SlotAvailabilityId, cancellationToken)
-            ?? throw new AppException(ErrorCodes.SlotUnavailable, "The selected slot is unavailable.", 409);
+        var bookingFlags = await _systemSettingRepository.GetByKeysAsync(
+            new[] { "Booking.OpenBookingMode", "Booking.EnforceSlotCapacity" },
+            cancellationToken);
 
-        ValidateSlot(zone.ZoneId, slotAvailability);
+        var openBookingMode = bookingFlags.TryGetValue("Booking.OpenBookingMode", out var obm)
+            && bool.TryParse(obm.SettingValue, out var obmVal) && obmVal;
+
+        var enforceSlotCapacity = !bookingFlags.TryGetValue("Booking.EnforceSlotCapacity", out var esc)
+            || !bool.TryParse(esc.SettingValue, out var escVal) || escVal;
+
+        // When OpenBookingMode is on, slot selection is optional — admin assigns time later.
+        // When EnforceSlotCapacity is off, capacity limits are bypassed.
+        SlotAvailability? slotAvailability = null;
+        if (request.SlotAvailabilityId.HasValue)
+        {
+            slotAvailability = await _bookingLookupRepository.GetSlotAvailabilityByIdAsync(request.SlotAvailabilityId.Value, cancellationToken)
+                ?? throw new AppException(ErrorCodes.SlotUnavailable, "The selected slot is unavailable.", 409);
+
+            if (enforceSlotCapacity)
+            {
+                ValidateSlot(zone.ZoneId, slotAvailability);
+            }
+        }
+        else if (!request.IsEmergency && !openBookingMode)
+        {
+            throw new AppException(ErrorCodes.SlotUnavailable, "A time slot is required.", 400);
+        }
 
         var customer = await _bookingRepository.GetCustomerByUserIdAsync(_currentUserContext.UserId.Value, cancellationToken);
 
@@ -88,8 +123,8 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
             customer = new Customer
             {
                 UserId = _currentUserContext.UserId,
-                CustomerName = request.CustomerName.Trim(),
-                MobileNumber = request.MobileNumber.Trim(),
+                CustomerName = request.CustomerName?.Trim() ?? _currentUserContext.UserName,
+                MobileNumber = request.MobileNumber?.Trim() ?? string.Empty,
                 EmailAddress = request.EmailAddress?.Trim() ?? string.Empty,
                 IsGuestCustomer = false,
                 IsActive = true,
@@ -102,9 +137,9 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
         }
         else
         {
-            customer.CustomerName = request.CustomerName.Trim();
-            customer.MobileNumber = request.MobileNumber.Trim();
-            customer.EmailAddress = request.EmailAddress?.Trim() ?? customer.EmailAddress;
+            if (!string.IsNullOrWhiteSpace(request.CustomerName)) customer.CustomerName = request.CustomerName.Trim();
+            if (!string.IsNullOrWhiteSpace(request.MobileNumber)) customer.MobileNumber = request.MobileNumber.Trim();
+            if (!string.IsNullOrWhiteSpace(request.EmailAddress)) customer.EmailAddress = request.EmailAddress.Trim();
             customer.IsGuestCustomer = false;
             customer.LastUpdated = _currentDateTime.UtcNow;
             customer.UpdatedBy = _currentUserContext.UserName;
@@ -128,6 +163,8 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
                 Landmark = request.Landmark?.Trim() ?? string.Empty,
                 CityName = request.CityName.Trim(),
                 Pincode = request.Pincode.Trim(),
+                Latitude = request.Latitude,
+                Longitude = request.Longitude,
                 IsDefault = customer.CustomerAddresses.Count == 0,
                 IsActive = true,
                 CreatedBy = _currentUserContext.UserName,
@@ -144,13 +181,19 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
             customerAddress.Landmark = request.Landmark?.Trim() ?? string.Empty;
             customerAddress.CityName = request.CityName.Trim();
             customerAddress.AddressLabel = request.AddressLabel?.Trim() ?? customerAddress.AddressLabel;
+            if (request.Latitude.HasValue) customerAddress.Latitude = request.Latitude;
+            if (request.Longitude.HasValue) customerAddress.Longitude = request.Longitude;
             customerAddress.LastUpdated = _currentDateTime.UtcNow;
             customerAddress.UpdatedBy = _currentUserContext.UserName;
         }
 
         var bookingReference = await GenerateUniqueBookingReferenceAsync(cancellationToken);
         var sourceChannel = Enum.Parse<BookingSourceChannel>(request.SourceChannel, true);
-        slotAvailability.ReservedCapacity += 1;
+
+        if (slotAvailability is not null)
+        {
+            slotAvailability.ReservedCapacity += 1;
+        }
 
         var booking = new DomainBooking
         {
@@ -176,6 +219,8 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
             PincodeSnapshot = customerAddress.Pincode,
             ZoneNameSnapshot = zone.ZoneName,
             ServiceNameSnapshot = service.ServiceName,
+            LatitudeSnapshot = request.Latitude,
+            LongitudeSnapshot = request.Longitude,
             EstimatedPrice = service.BasePrice + (request.EmergencySurchargeAmount ?? 0),
             CreatedBy = _currentUserContext.UserName,
             DateCreated = _currentDateTime.UtcNow,
@@ -186,8 +231,8 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
         {
             ServiceId = service.ServiceId,
             AcTypeId = acType.AcTypeId,
-            TonnageId = tonnage.TonnageId,
-            BrandId = brand.BrandId,
+            TonnageId = tonnage?.TonnageId,
+            BrandId = brand?.BrandId,
             ModelName = request.ModelName?.Trim() ?? string.Empty,
             IssueNotes = request.IssueNotes?.Trim() ?? string.Empty,
             Quantity = 1,
@@ -207,6 +252,24 @@ public sealed class CreateCustomerBookingCommandHandler : IRequestHandler<Create
             DateCreated = _currentDateTime.UtcNow,
             IPAddress = _currentUserContext.IPAddress
         });
+
+        var hasEquipment = await _bookingRepository.HasCustomerEquipmentByTypeAsync(
+            customer.CustomerId, acType.AcTypeName, cancellationToken);
+
+        if (!hasEquipment)
+        {
+            await _bookingRepository.AddCustomerEquipmentAsync(new CustomerEquipment
+            {
+                Customer = customer,
+                EquipmentName = $"{acType.AcTypeName} AC",
+                EquipmentType = acType.AcTypeName,
+                BrandName = string.Empty,
+                IsActive = true,
+                CreatedBy = _currentUserContext.UserName,
+                DateCreated = _currentDateTime.UtcNow,
+                IPAddress = _currentUserContext.IPAddress
+            }, cancellationToken);
+        }
 
         await _bookingRepository.AddBookingAsync(booking, cancellationToken);
         await _auditLogRepository.AddAsync(

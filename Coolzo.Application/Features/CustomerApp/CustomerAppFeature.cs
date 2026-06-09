@@ -60,6 +60,8 @@ public sealed record DeleteMyCustomerAddressCommand(long AddressId) : IRequest<U
 
 public sealed record GetMyCustomerEquipmentQuery : IRequest<IReadOnlyCollection<CustomerEquipmentResponse>>;
 
+public sealed record GetMyCustomerEquipmentByIdQuery(long CustomerEquipmentId) : IRequest<CustomerEquipmentResponse>;
+
 public sealed record CreateMyCustomerEquipmentCommand(
     string Name,
     string Type,
@@ -681,6 +683,31 @@ public sealed class GetMyCustomerEquipmentQueryHandler : IRequestHandler<GetMyCu
         var account = await CustomerAppAccess.ResolveCurrentCustomerAsync(_currentUserContext, _customerAccountLookupService, cancellationToken);
         var equipment = await _customerAppRepository.ListEquipmentAsync(account.Customer.CustomerId, cancellationToken);
         return equipment.Select(CustomerAppMapper.ToEquipment).ToArray();
+    }
+}
+
+public sealed class GetMyCustomerEquipmentByIdQueryHandler : IRequestHandler<GetMyCustomerEquipmentByIdQuery, CustomerEquipmentResponse>
+{
+    private readonly CustomerAccountLookupService _customerAccountLookupService;
+    private readonly ICustomerAppRepository _customerAppRepository;
+    private readonly ICurrentUserContext _currentUserContext;
+
+    public GetMyCustomerEquipmentByIdQueryHandler(
+        CustomerAccountLookupService customerAccountLookupService,
+        ICustomerAppRepository customerAppRepository,
+        ICurrentUserContext currentUserContext)
+    {
+        _customerAccountLookupService = customerAccountLookupService;
+        _customerAppRepository = customerAppRepository;
+        _currentUserContext = currentUserContext;
+    }
+
+    public async Task<CustomerEquipmentResponse> Handle(GetMyCustomerEquipmentByIdQuery request, CancellationToken cancellationToken)
+    {
+        var account = await CustomerAppAccess.ResolveCurrentCustomerAsync(_currentUserContext, _customerAccountLookupService, cancellationToken);
+        var equipment = await _customerAppRepository.GetEquipmentForUpdateAsync(account.Customer.CustomerId, request.CustomerEquipmentId, cancellationToken)
+            ?? throw new AppException(ErrorCodes.NotFound, "The customer equipment could not be found.", 404);
+        return CustomerAppMapper.ToEquipment(equipment);
     }
 }
 

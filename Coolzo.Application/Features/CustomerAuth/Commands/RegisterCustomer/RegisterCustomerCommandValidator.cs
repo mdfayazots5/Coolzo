@@ -15,9 +15,9 @@ public sealed class RegisterCustomerCommandValidator : AbstractValidator<Registe
             .Matches("^[0-9]{10,32}$");
 
         RuleFor(request => request.EmailAddress)
-            .NotEmpty()
             .EmailAddress()
-            .MaximumLength(128);
+            .MaximumLength(128)
+            .When(request => !string.IsNullOrWhiteSpace(request.EmailAddress));
 
         RuleFor(request => request.Password)
             .MaximumLength(512)

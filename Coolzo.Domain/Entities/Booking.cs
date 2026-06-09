@@ -16,7 +16,8 @@ public sealed class Booking : AuditableEntity
 
     public long ZoneId { get; set; }
 
-    public long SlotAvailabilityId { get; set; }
+    // Nullable: emergency bookings have no pre-selected slot (ops dispatches within SLA).
+    public long? SlotAvailabilityId { get; set; }
 
     public DateTime BookingDateUtc { get; set; }
 
@@ -49,6 +50,10 @@ public sealed class Booking : AuditableEntity
     public string ZoneNameSnapshot { get; set; } = string.Empty;
 
     public string ServiceNameSnapshot { get; set; } = string.Empty;
+
+    public double? LatitudeSnapshot { get; set; }
+
+    public double? LongitudeSnapshot { get; set; }
 
     public decimal EstimatedPrice { get; set; }
 

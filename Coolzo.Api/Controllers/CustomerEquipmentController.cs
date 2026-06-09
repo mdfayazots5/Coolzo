@@ -27,6 +27,16 @@ public sealed class CustomerEquipmentController : ApiControllerBase
         return Success(response);
     }
 
+    [HttpGet("{equipmentId:long}")]
+    [ProducesResponseType(typeof(ApiResponse<CustomerEquipmentResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<CustomerEquipmentResponse>>> GetMyEquipmentByIdAsync(
+        [FromRoute] long equipmentId,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetMyCustomerEquipmentByIdQuery(equipmentId), cancellationToken);
+        return Success(response);
+    }
+
     [HttpPost]
     [ProducesResponseType(typeof(ApiResponse<CustomerEquipmentResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<ApiResponse<CustomerEquipmentResponse>>> CreateEquipmentAsync(

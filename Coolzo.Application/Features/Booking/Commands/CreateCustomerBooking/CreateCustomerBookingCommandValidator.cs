@@ -9,11 +9,17 @@ public sealed class CreateCustomerBookingCommandValidator : AbstractValidator<Cr
     {
         RuleFor(request => request.ServiceId).GreaterThan(0);
         RuleFor(request => request.AcTypeId).GreaterThan(0);
-        RuleFor(request => request.TonnageId).GreaterThan(0);
-        RuleFor(request => request.BrandId).GreaterThan(0);
-        RuleFor(request => request.SlotAvailabilityId).GreaterThan(0);
-        RuleFor(request => request.CustomerName).NotEmpty().MaximumLength(128);
-        RuleFor(request => request.MobileNumber).Matches("^[0-9]{8,16}$");
+        // Tonnage/Brand optional — verified on-site by the technician. Validate only if supplied.
+        RuleFor(request => request.TonnageId).GreaterThan(0).When(request => request.TonnageId.HasValue);
+        RuleFor(request => request.BrandId).GreaterThan(0).When(request => request.BrandId.HasValue);
+        // Slot required for normal bookings; emergency bookings are dispatched without a pre-selected slot.
+        RuleFor(request => request.SlotAvailabilityId)
+            .NotNull()
+            .Must(slotAvailabilityId => slotAvailabilityId > 0)
+            .When(request => !request.IsEmergency)
+            .WithMessage("A time slot is required for non-emergency bookings.");
+        RuleFor(request => request.CustomerName).MaximumLength(128).When(request => !string.IsNullOrWhiteSpace(request.CustomerName));
+        RuleFor(request => request.MobileNumber).Matches("^[0-9]{8,16}$").When(request => !string.IsNullOrWhiteSpace(request.MobileNumber));
         RuleFor(request => request.EmailAddress).EmailAddress().When(request => !string.IsNullOrWhiteSpace(request.EmailAddress));
         RuleFor(request => request.AddressLine1).NotEmpty().MaximumLength(256);
         RuleFor(request => request.AddressLine2).MaximumLength(256);

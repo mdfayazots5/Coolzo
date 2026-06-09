@@ -46,7 +46,9 @@ public sealed class CustomerAccountProvisioningService
     {
         var normalizedCustomerName = request.CustomerName.Trim();
         var normalizedMobileNumber = request.MobileNumber.Trim();
-        var normalizedEmailAddress = request.EmailAddress.Trim();
+        var normalizedEmailAddress = string.IsNullOrWhiteSpace(request.EmailAddress)
+            ? null
+            : request.EmailAddress.Trim();
         var now = _currentDateTime.UtcNow;
         var actorName = ResolveActorName(auditActionName);
         var ipAddress = ResolveIpAddress();
@@ -69,7 +71,8 @@ public sealed class CustomerAccountProvisioningService
                 409);
         }
 
-        if (await _userRepository.ExistsByEmailAsync(normalizedEmailAddress, null, cancellationToken))
+        if (normalizedEmailAddress is not null &&
+            await _userRepository.ExistsByEmailAsync(normalizedEmailAddress, null, cancellationToken))
         {
             throw new AppException(
                 ErrorCodes.DuplicateValue,
@@ -90,7 +93,7 @@ public sealed class CustomerAccountProvisioningService
         var user = new User
         {
             UserName = normalizedMobileNumber,
-            Email = normalizedEmailAddress,
+            Email = normalizedEmailAddress ?? string.Empty,   // partial unique index on DB exempts empty string
             FullName = normalizedCustomerName,
             IsActive = true,
             CreatedBy = actorName,
@@ -125,7 +128,7 @@ public sealed class CustomerAccountProvisioningService
                 User = user,
                 CustomerName = normalizedCustomerName,
                 MobileNumber = normalizedMobileNumber,
-                EmailAddress = normalizedEmailAddress,
+                EmailAddress = normalizedEmailAddress ?? string.Empty,
                 IsGuestCustomer = false,
                 IsActive = true,
                 CreatedBy = actorName,
@@ -141,7 +144,7 @@ public sealed class CustomerAccountProvisioningService
             customer.User = user;
             customer.CustomerName = normalizedCustomerName;
             customer.MobileNumber = normalizedMobileNumber;
-            customer.EmailAddress = normalizedEmailAddress;
+            customer.EmailAddress = normalizedEmailAddress ?? existingCustomer.EmailAddress;
             customer.IsGuestCustomer = false;
             customer.IsActive = true;
             customer.LastUpdated = now;
@@ -187,7 +190,7 @@ public sealed class CustomerAccountProvisioningService
 public sealed record CustomerAccountProvisioningRequest(
     string CustomerName,
     string MobileNumber,
-    string EmailAddress,
+    string? EmailAddress,
     string? Password);
 
 public sealed record CustomerAccountProvisioningResult(

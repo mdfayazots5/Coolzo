@@ -10,9 +10,10 @@ public sealed class BookingLine : AuditableEntity
 
     public long AcTypeId { get; set; }
 
-    public long TonnageId { get; set; }
+    // Nullable: tonnage/brand are verified on-site by the technician, not captured at booking.
+    public long? TonnageId { get; set; }
 
-    public long BrandId { get; set; }
+    public long? BrandId { get; set; }
 
     public string ModelName { get; set; } = string.Empty;
 

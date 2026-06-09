@@ -8,6 +8,10 @@ public interface IBookingRepository
 
     Task AddCustomerAddressAsync(CustomerAddress customerAddress, CancellationToken cancellationToken);
 
+    Task AddCustomerEquipmentAsync(CustomerEquipment equipment, CancellationToken cancellationToken);
+
+    Task<bool> HasCustomerEquipmentByTypeAsync(long customerId, string equipmentType, CancellationToken cancellationToken);
+
     Task AddBookingAsync(Booking booking, CancellationToken cancellationToken);
 
     Task<bool> BookingReferenceExistsAsync(string bookingReference, CancellationToken cancellationToken);
