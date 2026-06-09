@@ -11,7 +11,18 @@ using Coolzo.Application.Features.CMS.Queries.GetPublicBannerContent;
 using Coolzo.Application.Features.CMS.Queries.GetPublicFAQContent;
 using Coolzo.Application.Features.CMS.Queries.GetPublicHomeCMSContent;
 using Coolzo.Application.Features.CMS.Queries.GetPublicServiceContent;
+using Coolzo.Application.Features.CMS.Snapshot.Commands.PublishContentSnapshot;
+using Coolzo.Application.Features.CMS.Snapshot.Commands.RollbackContentSnapshot;
+using Coolzo.Application.Features.CMS.Snapshot.Queries.GetContentSnapshot;
+using Coolzo.Application.Features.CMS.Snapshot.Queries.GetSnapshotManifest;
+using Coolzo.Application.Features.CMS.ScreenImage.Commands.UploadScreenImage;
+using Coolzo.Application.Features.CMS.ScreenImage.Commands.UpsertScreenImageSlot;
+using Coolzo.Application.Features.CMS.ScreenImage.Queries.GetScreenImageSlotList;
+using Coolzo.Application.Features.CMS.Theme.Commands.UpdateTheme;
+using Coolzo.Application.Features.CMS.Theme.Queries.GetTheme;
 using Coolzo.Contracts.Common;
+using Coolzo.Contracts.Requests.CMS;
+using Coolzo.Contracts.Responses.CMS;
 using Coolzo.Contracts.Requests.Admin;
 using Coolzo.Contracts.Responses.Admin;
 using Coolzo.Shared.Constants;
@@ -250,5 +261,143 @@ public sealed class CMSController : ApiControllerBase
             cancellationToken);
 
         return Success(response, "CMS FAQ updated successfully.");
+    }
+
+    [Authorize(Policy = PermissionNames.CmsManage)]
+    [HttpPost("publish")]
+    public async Task<ActionResult<ApiResponse<SnapshotManifestResponse>>> PublishSnapshotAsync(
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new PublishContentSnapshotCommand(), cancellationToken);
+
+        return Success(response, "Content snapshot published successfully.");
+    }
+
+    [Authorize(Policy = PermissionNames.CmsManage)]
+    [HttpPost("rollback/{version:int}")]
+    public async Task<ActionResult<ApiResponse<SnapshotManifestResponse>>> RollbackSnapshotAsync(
+        [FromRoute] int version,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new RollbackContentSnapshotCommand(version), cancellationToken);
+
+        return Success(response, "Content snapshot rolled back successfully.");
+    }
+
+    [AllowAnonymous]
+    [HttpGet("snapshot/manifest")]
+    public async Task<ActionResult<ApiResponse<SnapshotManifestResponse>>> GetSnapshotManifestAsync(
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetSnapshotManifestQuery(), cancellationToken);
+
+        return Success(response);
+    }
+
+    [AllowAnonymous]
+    [HttpGet("snapshot/{version:int}")]
+    public async Task<ActionResult<ApiResponse<ContentSnapshotResponse>>> GetSnapshotByVersionAsync(
+        [FromRoute] int version,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetContentSnapshotQuery(version), cancellationToken);
+
+        return Success(response);
+    }
+
+    [Authorize(Policy = PermissionNames.CmsRead)]
+    [HttpGet("admin/theme")]
+    public async Task<ActionResult<ApiResponse<ThemeResponse>>> GetThemeAsync(CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetThemeQuery(), cancellationToken);
+
+        return Success(response);
+    }
+
+    [Authorize(Policy = PermissionNames.CmsManage)]
+    [HttpPut("admin/theme")]
+    public async Task<ActionResult<ApiResponse<ThemeResponse>>> UpdateThemeAsync(
+        [FromBody] UpdateThemeRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new UpdateThemeCommand(request.Tokens), cancellationToken);
+
+        return Success(response, "Theme updated successfully.");
+    }
+
+    [Authorize(Policy = PermissionNames.CmsRead)]
+    [HttpGet("admin/image-slots")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyCollection<ScreenImageSlotResponse>>>> GetImageSlotsAsync(
+        [FromQuery] string? pageKey,
+        [FromQuery] bool? isActive,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(new GetScreenImageSlotListQuery(pageKey, isActive), cancellationToken);
+
+        return Success(response);
+    }
+
+    [Authorize(Policy = PermissionNames.CmsManage)]
+    [HttpPost("admin/image-slots")]
+    public async Task<ActionResult<ApiResponse<ScreenImageSlotResponse>>> CreateImageSlotAsync(
+        [FromBody] ScreenImageSlotUpsertRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new UpsertScreenImageSlotCommand(
+                null,
+                request.PageKey,
+                request.SlotKey,
+                request.Breakpoint,
+                request.RecommendedWidth,
+                request.RecommendedHeight,
+                request.AltText,
+                request.SuggestedAIPrompt,
+                request.IsActive),
+            cancellationToken);
+
+        return Success(response, "Screen image slot created successfully.");
+    }
+
+    [Authorize(Policy = PermissionNames.CmsManage)]
+    [HttpPut("admin/image-slots/{screenImageSlotId:long}")]
+    public async Task<ActionResult<ApiResponse<ScreenImageSlotResponse>>> UpdateImageSlotAsync(
+        [FromRoute] long screenImageSlotId,
+        [FromBody] ScreenImageSlotUpsertRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new UpsertScreenImageSlotCommand(
+                screenImageSlotId,
+                request.PageKey,
+                request.SlotKey,
+                request.Breakpoint,
+                request.RecommendedWidth,
+                request.RecommendedHeight,
+                request.AltText,
+                request.SuggestedAIPrompt,
+                request.IsActive),
+            cancellationToken);
+
+        return Success(response, "Screen image slot updated successfully.");
+    }
+
+    [Authorize(Policy = PermissionNames.CmsManage)]
+    [HttpPost("admin/image-slots/{screenImageSlotId:long}/upload")]
+    public async Task<ActionResult<ApiResponse<ScreenImageSlotResponse>>> UploadImageAsync(
+        [FromRoute] long screenImageSlotId,
+        [FromBody] ScreenImageUploadRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new UploadScreenImageCommand(
+                screenImageSlotId,
+                request.FileName,
+                request.ContentType,
+                request.Base64Content,
+                request.AltText),
+            cancellationToken);
+
+        return Success(response, "Screen image uploaded successfully.");
     }
 }

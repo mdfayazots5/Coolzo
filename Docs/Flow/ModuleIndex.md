@@ -702,6 +702,23 @@ Screens: CMS Dashboard, Banner Manager, Page Editor, Blog Manager, FAQ Manager, 
 
 Dependencies: Marketing, Website, Mobile Apps, Notifications
 
+## Module: CMS Content & Theme Delivery (Public Web Portal)
+
+- Section: SECTION 9
+- Keywords: cms-delivery, snapshot, key-registry, theme, fonts, colors, screen-images, gemini-prompt, render-bucket, published-json, backend-driven-ui, masters-to-portal
+
+ProjectOverview reference: SECTION 9 — CONFIGURATION, NOTIFICATIONS & AUDIT → "7. CMS CONTENT & THEME DELIVERY (PUBLIC WEB PORTAL)" in `Docs/ProjectOverview.md`
+
+API names: Publish Snapshot, Get Snapshot Manifest, Get Snapshot Version, Rollback Snapshot, Get/Upsert Screen Image Slot (theme via existing tblSystemSetting theme.* keys)
+
+DB tables: tblScreenImageSlot, tblPublishedSnapshot (+ reuse CMSBlocks/Banners/FAQs/masters; theme reuses tblSystemSetting scalar theme.* rows)
+
+Screens (Admin): Theme & Appearance Editor, Screen Image Manager (AI-prompt + upload), Content/Master Editors, Publish & Version History/Rollback, Preview
+
+Consuming surface: Public Web portal only (Frontend/Web). Static snapshot.json in Render bucket; IMemoryCache-backed API fallback (no Redis).
+
+Dependencies: CMS & Content, Master Data & Configuration, Render Storage, Public Web Portal
+
 ## Module: Reports & Audit
 
 - Section: SECTION 9

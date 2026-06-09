@@ -155,6 +155,10 @@ public sealed class CoolzoDbContext : DbContext
 
     public DbSet<CMSBanner> CMSBanners => Set<CMSBanner>();
 
+    public DbSet<PublishedSnapshot> PublishedSnapshots => Set<PublishedSnapshot>();
+
+    public DbSet<ScreenImageSlot> ScreenImageSlots => Set<ScreenImageSlot>();
+
     public DbSet<CMSFaq> CMSFaqs => Set<CMSFaq>();
 
     public DbSet<CMSContentVersion> CMSContentVersions => Set<CMSContentVersion>();

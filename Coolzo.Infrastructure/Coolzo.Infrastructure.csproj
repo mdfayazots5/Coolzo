@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="3.7.414.3" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.25" />
     <ProjectReference Include="..\Coolzo.Application\Coolzo.Application.csproj" />
     <ProjectReference Include="..\Coolzo.Domain\Coolzo.Domain.csproj" />

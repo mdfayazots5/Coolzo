@@ -71,6 +71,8 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IUserPasswordHistoryRepository, UserPasswordHistoryRepository>();
         services.AddScoped<ISystemSettingRepository, SystemSettingRepository>();
         services.AddScoped<IAdminConfigurationRepository, AdminConfigurationRepository>();
+        services.AddScoped<IPublishedSnapshotRepository, PublishedSnapshotRepository>();
+        services.AddScoped<IScreenImageSlotRepository, ScreenImageSlotRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");

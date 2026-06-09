@@ -40,6 +40,10 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IGapPhaseAReferenceGenerator, GapPhaseAReferenceGenerator>();
         services.AddSingleton<IInstallationLifecycleReferenceGenerator, InstallationLifecycleReferenceGenerator>();
         services.AddScoped<IJobAttachmentStorageService, LocalJobAttachmentStorageService>();
+
+        services.Configure<ObjectStorageOptions>(configuration.GetSection(ObjectStorageOptions.SectionName));
+        services.AddScoped<IObjectStorageService, FileSystemObjectStorageService>();
+
         services.AddScoped(typeof(IAppLogger<>), typeof(AppLogger<>));
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

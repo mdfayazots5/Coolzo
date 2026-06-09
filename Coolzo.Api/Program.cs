@@ -1,4 +1,5 @@
 using Coolzo.Api.Extensions;
+using Coolzo.Api.HealthChecks;
 using Coolzo.Api.Middleware;
 using Coolzo.Application.DependencyInjection;
 using Coolzo.Infrastructure.DependencyInjection;
@@ -9,6 +10,9 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddPresentation();
+
+builder.Services.AddHealthChecks()
+    .AddCheck<ObjectStorageHealthCheck>("object-storage");
 
 builder.Services.AddCors(options =>
 {
@@ -52,5 +56,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();

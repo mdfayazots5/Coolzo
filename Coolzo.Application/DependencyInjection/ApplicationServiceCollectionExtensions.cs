@@ -31,6 +31,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<AmcScheduleService>();
         services.AddScoped<IBillingCalculationService, BillingCalculationService>();
         services.AddScoped<AdminActivityLogger>();
+        services.AddScoped<IContentSnapshotBuilder, ContentSnapshotBuilder>();
         services.AddScoped<GapPhaseAFeatureFlagService>();
         services.AddScoped<GapPhaseANotificationService>();
         services.AddScoped<GapPhaseAValidationService>();

@@ -2965,10 +2965,18 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
     8. Tonnage/Brand looked up + validated only when supplied; null is accepted [2026-06-08]
     9. Emergency (IsEmergency=true): booking created with SlotAvailabilityId=null, capacity untouched;
        EstimatedPrice = service base + EmergencySurchargeAmount [2026-06-08]
+    10. Booking-mode flags read from tblSystemSetting (keys Booking.OpenBookingMode,
+       Booking.EnforceSlotCapacity) per request [added 2026-06-09]:
+       • OpenBookingMode=true  → slot selection optional even for non-emergency; admin assigns time
+         later (null slot accepted, no 400). Default false → slot required for non-emergency.
+       • EnforceSlotCapacity=false → ValidateSlot/capacity check bypassed when a slot IS supplied.
+         Default true → capacity validated. Resolution defaults to OPEN=false / ENFORCE=true when the
+         key is missing or unparseable (fail-safe to strict behavior).
   State Transitions: → BookingStatus.Confirmed
   Failure Cases:
     - SlotAvailabilityId provided but not found / slot full → 409
-    - SlotAvailabilityId null AND IsEmergency=false → 400 ("A time slot is required")
+    - SlotAvailabilityId null AND IsEmergency=false AND OpenBookingMode=false → 400 ("A time slot is required")
+    - SlotAvailabilityId provided + EnforceSlotCapacity=true + slot at capacity → 409
     - TonnageId/BrandId provided but invalid → 400
     - Missing required fields → 400
 
@@ -2998,11 +3006,58 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
     5. IsEmergency=true: bypass normal slot rules per emergency policy
     6. EmergencySurchargeAmount recorded on booking
     7. Same idempotency behavior as guest booking
+    8. Booking-mode flags (Booking.OpenBookingMode, Booking.EnforceSlotCapacity) applied identically
+       to the guest flow — same read from tblSystemSetting, same defaults/fail-safe [added 2026-06-09]
   State Transitions: → BookingStatus.Confirmed
   Failure Cases:
-    - Slot provided but full/unavailable → 409
-    - SlotAvailabilityId null AND IsEmergency=false → 400
+    - Slot provided but full/unavailable (when EnforceSlotCapacity=true) → 409
+    - SlotAvailabilityId null AND IsEmergency=false AND OpenBookingMode=false → 400
     - Invalid emergency surcharge (< 0) → 400
+
+---
+
+### Flow: Get Booking Public Settings  [added 2026-06-09]
+  Entry Points:   Booking wizard bootstrap (public/guest path) — read before slot step
+  UI Trigger:     Wizard load / "Book Now" entry
+  API Endpoint:   GET /api/bookings/public/settings
+  Auth:           AllowAnonymous
+  Request DTO:    none
+  Response DTO:   ApiResponse<BookingPublicSettingsResponse>
+    - OpenBookingMode (bool): true → wizard may allow submit without a slot (admin schedules later)
+    - EnforceSlotCapacity (bool): true → wizard must respect per-slot capacity / disable full slots
+  Business Rules:
+    1. Values resolved from tblSystemSetting via ISystemSettingRepository.GetByKeysAsync
+       (keys Booking.OpenBookingMode, Booking.EnforceSlotCapacity).
+    2. Fail-safe defaults when key missing/unparseable: OpenBookingMode=false, EnforceSlotCapacity=true
+       — same resolution logic the two booking-create handlers use, so UI and server agree.
+    3. Read-only; no DB writes, no audit entry.
+  DB Tables:      tblSystemSetting (read)
+  Stored Procedures: none (EF query via SystemSettingRepository.GetByKeysAsync)
+  Failure Cases:  none functional — always returns a resolved pair (defaults on missing rows)
+  Notes on Drift: Endpoint exists so the public wizard reads the SAME two flags the create handlers
+                  enforce, preventing UI/server divergence (client can't submit a no-slot booking the
+                  server would 400, and vice-versa).
+
+---
+
+### NOTES ON DRIFT (2026-06-09) — Booking-mode flags (OpenBookingMode / EnforceSlotCapacity)
+Drift type: stale docs (feature shipped in code; brain + DB seed not updated).
+- WHAT SHIPPED: two system-setting flags now govern booking slot behavior, read per request by both
+  CreateGuestBooking and CreateCustomerBooking handlers, plus a new GET /api/bookings/public/settings
+  endpoint that exposes them to the public wizard.
+  • Booking.OpenBookingMode (default false): when true, slot selection optional for non-emergency.
+  • Booking.EnforceSlotCapacity (default true): when false, per-slot capacity check is bypassed.
+- STORAGE: tblSystemSetting (existing table — no schema change). Flags stored as DataType='Boolean'.
+- SEED REQUIRED (RUN ONCE per environment — not yet executed). Provider differs by environment:
+  • appsettings.json        → Provider=SqlServer → (localdb)\MSSQLLocalDB / CoolzoDB
+  • appsettings.Development  → Provider=Postgres  → Supabase (Host=aws-1-ap-south-1.pooler.supabase.com)
+  SQL Server seed:  Backend/Docs/Database/DB_Seed_20260609_BookingModeSettings.sql
+  Postgres seed:    Backend/Docs/Postgres/DB_Seed_20260609_BookingModeSettings_Postgres.sql  [added 2026-06-09]
+  The original SQL Server seed (GETDATE()/dbo./GO/IF-EXISTS) does NOT run on Postgres — run the
+  matching file for the target provider. Both insert OpenBookingMode='false' + EnforceSlotCapacity='true'
+  only if absent (idempotent). Handlers fail-safe to the same defaults if the seed has not run, so
+  behavior is correct pre-seed; the seed only makes the flags admin-visible/editable.
+- [VERIFY] Seed not confirmed executed against either DB from this session.
 
 ---
 
@@ -4235,6 +4290,7 @@ Notes:
 | GET | `/api/customer-bookings/{bookingId}/service-report/pdf` | Download service report PDF (Blob) |
 | POST | `/api/bookings/customer` | Create new booking (authenticated) |
 | POST | `/api/bookings/guest` | Create new booking (guest) |
+| GET | `/api/bookings/public/settings` | Public booking-mode flags (OpenBookingMode, EnforceSlotCapacity) |
 
 - Service: `bookingService.ts`
 
@@ -7516,6 +7572,99 @@ Current AdminMobile Phase 4 implementation
 - These AdminMobile screens use the existing generic admin configuration surface exposed by `Backend/Coolzo.Api/Controllers/Phase4ConfigurationController.cs` under `/api/master/*` and `/api/config/*`.
 
 
+7. CMS CONTENT & THEME DELIVERY (PUBLIC WEB PORTAL) — TARGET ARCHITECTURE & ROADMAP
+
+Purpose: Make the public Web portal (`Frontend/Web`, React 19 + Vite) fully backend-driven. The admin
+team edits masters (services, pricing, brands), content (banners, copy, FAQs, blog, testimonials),
+screen images, and theme (colors, fonts, logo) in the Admin app; on Publish those changes flow to the
+portal automatically with NO portal code change. The portal does NOT hit the DB or call per-request
+APIs on each load — it reads one versioned static JSON snapshot from the existing Render storage bucket
+(CDN). A lightweight in-process IMemoryCache holds the snapshot manifest for the rare API fallback path.
+
+Scope decisions (locked 2026-06-09):
+- Consuming surface: Public Web portal ONLY (Admin app and mobile apps are out of scope for this module).
+- Delivery: versioned `snapshot.json` written to the Render bucket; portal fetches the static file. Zero per-request DB/API.
+- Images: prompt-helper + upload (no live Gemini API). Each image slot carries a suggested AI prompt; admin generates in Gemini or uses a real photo, then uploads.
+- Caching: NO Redis. The static-bucket design makes the portal never touch a cache; publish is an infrequent admin write; the fallback API is a tiny query. In-process IMemoryCache covers the fallback. [Decision 2026-06-09: Redis rejected as standing infra for a near-zero-traffic path; revisit only if a shared cross-module cache need is measured.]
+
+Flow Name: CMS Snapshot Publish & Portal Hydration
+  Entry Points:
+    - Admin app: CMS module → Content/Masters/Theme/Image editors → "Publish" action.
+    - Public Web portal: app bootstrap (`Frontend/Web/src/main.tsx` → ContentProvider/ThemeProvider).
+  UI Trigger:
+    - Admin: "Publish" button (staged activation, T2/T3 confirmation).
+    - Portal: bootstrap fetch on first load + version-manifest poll (ETag) thereafter.
+  API Endpoint: [IMPLEMENTED — note: this codebase routes under /api/... NOT /api/v1/...; CMSController = [Route("api/cms")]. v1 convention from CLAUDE.md is not used anywhere in the codebase — following codebase reality.]
+    - POST /api/cms/publish — builds + writes snapshot (Authorize policy cms.manage). Returns SnapshotManifestResponse.
+    - GET  /api/cms/snapshot/manifest — returns { version, bucketUrl, checksum, publishedAtUtc } (IMemoryCache 60s, fallback to tblPublishedSnapshot). AllowAnonymous.
+    - GET  /api/cms/snapshot/{version} — fallback full-snapshot read from object storage (AllowAnonymous).
+    - POST /api/cms/rollback/{version} — re-activates a prior snapshot version (cms.manage).
+    - Static (no API): {ObjectStorage.PublicBaseUrl}/cms/snapshot-latest.json  ← primary path the portal reads.
+  Snapshot Payload (single immutable JSON document, aggregated on publish):
+    {
+      version, publishedAt, checksum,
+      theme: { colors{...design tokens...}, fonts{family, weights}, logoUrl },
+      masters: { serviceTypes[], serviceSubTypes[], brands[], pricing[], amcPlans[] },
+      content: { banners[], homeBlocks[], serviceContent{}, testimonials[], faqs[], footer{} },
+      images: { "<pageKey>.<slotKey>": { url, alt, variants{desktop,tablet,mobile} } }
+    }
+  Validation Rules:
+    - Publish requires CMS-publish permission; payload schema-validated; no PII / no secrets in snapshot.
+    - Every active image slot must resolve to a reachable bucket URL or fall back to a documented default.
+    - Theme color tokens validated against design system; fonts limited to ≤2 weights per screen (design rule).
+  DB Tables (provider-aware: SQL Server prod / Postgres dev — see [[db-provider-split]]):
+    - Reuse: CMSBlocks, CMSBlockVersions, Banners, FAQs, BlogPosts, Testimonials, ServiceType/Brand/Pricing masters. [VERIFY exact tbl-prefixed names against schema]
+    - Theme (colors, fonts, logo ref): REUSE existing tblSystemSetting as SCALAR rows under a "theme.*" key prefix (theme.color.primary, theme.color.accent, ..., theme.font.family, theme.font.weights, theme.logoUrl). NOT a single JSON blob — SettingValue is nvarchar(512) IsRequired (SystemSettingConfiguration.cs:16) and a full theme blob overflows it. Scalar rows fit the 512 cap and the table's DataType design; the publish aggregator composes them into snapshot.theme{}. No dedicated theme table; snapshot versioning (tblPublishedSnapshot) covers theme version/rollback. [Decision 2026-06-09: tblThemeSetting rejected as duplicate; single-blob rejected due to 512-char cap; scalar theme.* rows chosen.] [DRIFT FIXED: brain previously said "SystemConfigs(ValueJSON)"; real table is tblSystemSetting(SettingKey, SettingValue nvarchar(512), DataType, IsSensitive).]
+    - NEW tblScreenImageSlot (PageKey, SlotKey, Breakpoint, RecommendedWidth, RecommendedHeight, AltText, SuggestedAIPrompt, ImageUrl, IsActive + audit columns).
+    - NEW tblPublishedSnapshot (SnapshotId, Version, BucketUrl, ChecksumHash, PayloadSizeBytes, PublishedBy, DatePublished, IsActive + audit columns) — version history & rollback.
+  Stored Procedures: uspBuildContentSnapshot (aggregate), uspInsertPublishedSnapshot, uspGetActiveSnapshot, uspRollbackSnapshot, uspGetScreenImageSlotList, uspUpsertScreenImageSlot. Theme read/write reuses existing tblSystemSetting access (scalar theme.* keys). [VERIFY/CREATE per New SQL Format]
+  Business Rules:
+    - Publish is atomic: snapshot built fully, written to bucket, version row marked active, prior version retained for rollback.
+    - Portal always reads the active snapshot version; cache-busts via version in the manifest/filename.
+    - Image slots define per-breakpoint variants so device-type rendering (Desktop/Laptop/Tablet/Mobile) is correct.
+  Realtime Events: none required (portal polls manifest ETag). [VERIFY — optional SignalR "snapshot.published" for instant admin preview]
+  Failure Cases:
+    - Bucket write fails → publish aborts, prior snapshot stays active, error surfaced to admin.
+    - Portal bucket fetch fails → fall back to GET /api/v1/cms/snapshot/manifest + /{version} (Redis-served).
+    - Missing image slot → documented default asset; never a broken image.
+  Recovery / Fallback: IMemoryCache-backed manifest + API snapshot read; rollback endpoint restores any retained version.
+  Notes on Drift: General IObjectStorageService (filesystem-backed, Render-disk ready) introduced in Phase 0 [2026-06-09] alongside the untouched IJobAttachmentStorageService. No Redis is used (rejected — see Caching decision). Portal now consumes the published snapshot via ContentProvider + SnapshotImage (Phase 4); home.hero/amc.banner/about.hero are backend-driven, other hardcoded images can be migrated incrementally with the same <SnapshotImage slotKey=...> pattern (add a tblScreenImageSlot row + use the component).
+
+IMPLEMENTATION ROADMAP (execute phase-wise; each phase passes Architecture + Security + QA gates before the next):
+  Phase 0 — Foundations / Infra (DevOps-SRE + Backend + Security): [IMPLEMENTED 2026-06-09]
+    IObjectStorageService (Coolzo.Application/Common/Interfaces) + StoredObjectResult model; FileSystemObjectStorageService (Coolzo.Infrastructure/Storage) — filesystem-backed, works for local wwwroot (served via existing UseStaticFiles) and absolute Render persistent-disk RootPath; path-traversal guarded (keys must be relative, no ".."). ObjectStorageOptions ("ObjectStorage": RootPath, PublicBaseUrl) bound in InfrastructureServiceCollectionExtensions; registered scoped. ObjectStorageHealthCheck (Coolzo.Api/HealthChecks) mapped at GET /health. appsettings + appsettings.Development have ObjectStorage section. No Redis (IMemoryCache where a cache is needed). Existing IJobAttachmentStorageService left untouched (additive). Build: 0 warnings / 0 errors.
+    OPS NOTE: for production, set ObjectStorage:RootPath to the mounted Render disk path and ObjectStorage:PublicBaseUrl to the served/CDN base URL.
+  Phase 1 — Snapshot contract & publish pipeline (Backend + Chief Architect + Security + QA): [IMPLEMENTED 2026-06-09]
+    STABLE KEY REGISTRY: Coolzo.Shared/Constants/SnapshotKeys.cs — frozen sections (theme/masters/content/images), theme.* token keys, master/content collection keys, storage object keys, manifest cache key. Permanent contract; never rename/drop a bound key without migration; world-readable artifact carries no PII/secret.
+    Snapshot DTO: Coolzo.Contracts/Responses/CMS/ContentSnapshotResponse.cs (+ body/manifest/sub-DTOs). Aggregator: IContentSnapshotBuilder/ContentSnapshotBuilder (theme from tblSystemSetting theme.* non-sensitive; content from CMS blocks/banners/faqs; masters+images shapes fixed, populated Phase 2+). Serializer: SnapshotSerializer (camelCase, SHA256 checksum).
+    Persistence: PublishedSnapshot entity + PublishedSnapshotConfiguration (tblPublishedSnapshot, UK on Version, IDX on IsActive) + DbSet + IPublishedSnapshotRepository/PublishedSnapshotRepository. DDL: Docs/Database/SQL/20260609_Add_PublishedSnapshot_Table.sql (SqlServer) + Docs/Postgres/13_add_published_snapshot.sql (Postgres). [Postgres DDL APPLIED to Supabase dev DB 2026-06-09 — tblPublishedSnapshot verified, 26 columns. SqlServer script pending prod apply.]
+    Runtime smoke test 2026-06-09: GET /api/cms/snapshot/manifest → 404 standard envelope ("No published content snapshot is active.") proving DI + handler + repository against live tblPublishedSnapshot + envelope; GET /health → 200 Healthy (object-storage + database checks). Publish/rollback not yet runtime-tested (needs cms.manage JWT — covered when Admin UI lands in Phase 3).
+    Publish handler atomic order: build → write versioned file → deactivate prior + insert active row + SaveChanges → flip snapshot-latest.json → invalidate cache → audit. Rollback re-points latest to a retained version. Build: 0 warnings / 0 errors.
+  Phase 2 — Theme & Screen-Image backend + DB (Database Architect + Backend): [IMPLEMENTED 2026-06-09]
+    Theme: ISystemSettingRepository gained GetTrackedByKeyAsync/AddAsync; GetTheme query + UpdateTheme command (validates keys ∈ SnapshotKeys.Theme.AllKeys) over tblSystemSetting "theme.*" scalar rows. Endpoints GET/PUT /api/cms/admin/theme (cms.read / cms.manage).
+    Screen images: ScreenImageSlot entity + ScreenImageSlotConfiguration (tblScreenImageSlot, UK PageKey+SlotKey+Breakpoint) + DbSet + IScreenImageSlotRepository; features GetScreenImageSlotList, UpsertScreenImageSlot, UploadScreenImage (base64, ≤5MB, png/jpeg/webp/svg → IObjectStorageService key cms/images/{page}/{slot}-{bp}-{guid}{ext}). Endpoints under /api/cms/admin/image-slots (+ /{id}/upload).
+    Snapshot builder now populates images: active slots with a non-empty ImageUrl grouped by "{PageKey}.{SlotKey}" → SnapshotImageDto(url, alt, variants{breakpoint→url}). Masters still empty (later phase).
+    DDL: SqlServer Docs/Database/SQL/20260609_Add_ScreenImageSlot_Table.sql + seed DB_Seed_20260609_CmsThemeAndImageSlots.sql; Postgres Docs/Postgres/14_add_screen_image_slot.sql + 15_seed_cms_theme_and_image_slots.sql. [Postgres table+seed APPLIED to Supabase 2026-06-09: 13 theme.* tokens + 6 starter slots (home.hero desktop/tablet/mobile, services.banner, amc.banner, about.hero) with Gemini prompts. SqlServer pending prod.]
+    END-TO-END VERIFIED 2026-06-09 (dev, minted cms JWT): list slots → upload PNG to home.hero/desktop → publish v1 → GET /cms/snapshot-latest.json shows 13 theme tokens (#1B2A4A primary, #C9A84C accent) + images["home.hero"] with variants; manifest 404→200; publish v2 → rollback to v1 → manifest=v1. Build 0/0. Dev wwwroot left with a working published snapshot baseline (test image is a 1×1 placeholder; admin replaces it).
+  Phase 3 — Admin CMS authoring UI (Frontend & Mobile Eng + UX + QA): [IMPLEMENTED 2026-06-09]
+    Admin app = Frontend/Admin (React 19 + Vite). Repository src/core/network/cms-delivery-repository.ts wraps /api/cms admin+publish endpoints (envelope auto-unwrapped by api-client interceptor; Bearer token auto-attached). Screen src/features/governance/CmsDeliveryManager.tsx with three tabs: Theme (color pickers + hex for the 10 colour tokens, font family/weights, logo URL → PUT theme), Screen Images (slots grouped by page; per-slot preview, recommended dims, Suggested Gemini prompt + Copy button, file→base64 upload), Publish & Versions (Publish Now, active-version/checksum readout, rollback by version). Route /governance/cms-delivery (RoleGuard module="settings") in app/navigation/router.tsx; "Web Portal" nav item (Globe) added to SUPER_ADMIN, ADMIN, MARKETING_MANAGER in app/modules/role-navigation.tsx. Typecheck (tsc --noEmit) clean. Runtime UI click-through pending (needs admin login in browser); underlying endpoints already verified live in Phase 1/2.
+  Phase 4 — Public Web portal consumption (Frontend & Mobile Eng + UX + Performance + QA): [IMPLEMENTED 2026-06-09]
+    Frontend/Web (React 19 + Vite). snapshotService.ts fetches the static {VITE_API_BASE_URL}/cms/snapshot-latest.json (cache-busted, localStorage-cached; resolveAssetUrl prefixes relative object URLs with the API origin so dev works without a CDN). ContentContext.tsx (ContentProvider + useContent): hydrates from cache instantly, revalidates on mount, injects theme tokens as CSS variables on :root (theme.color.primary→--color-brand-navy, accent→--color-brand-gold, background→--color-brand-cream, textPrimary→--color-brand-black, font.family→--font-sans) — so theme changes apply site-wide with no code edit. SnapshotImage.tsx renders a responsive <picture> (mobile ≤640 / tablet ≤1024 / desktop) from a slot's variants with a bundled fallback (never a broken image). App.tsx wrapped in ContentProvider. Wired slots: home.hero (Home), amc.banner (AMC), about.hero (About). services.banner slot exists but Services is a filterable catalog with no hero image (left for future use). Typecheck tsc --noEmit clean.
+    VERIFIED 2026-06-09 (dev): GET {API}/cms/snapshot-latest.json → 200 (theme #1B2A4A + images.home.hero present); referenced image asset → 200 image/png. Full browser render click-through still recommended.
+  Phase 5 — Hardening (QA + Security + Performance): [IMPLEMENTED 2026-06-09]
+    Bucket-down fallback: snapshotService.fetchSnapshot() now tries the static file first, then falls back to the API (GET /api/cms/snapshot/manifest → GET /api/cms/snapshot/{version}, envelope-unwrapped, IMemoryCache+DB backed); localStorage write is guarded. Cache-busting via ?t= each load; cached snapshot paints instantly then revalidates.
+    Security review (PASS): snapshot theme = only non-sensitive "theme.*" tblSystemSetting rows (ContentSnapshotBuilder filters !IsSensitive + prefix); content = public-published CMS (publicOnly); images = public slots. No PII/secrets in the world-readable artifact. Mutations gated by cms.manage; manifest/snapshot reads AllowAnonymous (public content only).
+    Performance: snapshot ~2KB; SnapshotImage lazy by default (hero eager); single static fetch, no per-request DB/API on the hot path.
+    QA: Web tsc --noEmit clean + production `vite build` succeeds. Backend build 0/0. Atomic publish ordering re-confirmed (versioned write → DB commit → flip latest).
+    Doc: this SECTION 9 §7 entry is at STABLE CONTRACT LEVEL — a future agent can diagnose/extend the module from here without source reads.
+
+OPERATIONAL RUNBOOK (CMS Content & Theme Delivery):
+  - Admin path: Admin app → "Web Portal" (/governance/cms-delivery) → edit Theme / upload Screen Images → "Publish Now". Rollback by version on the same screen.
+  - Add a new backend-driven image: insert a tblScreenImageSlot row (PageKey, SlotKey, Breakpoint, prompt, dims) → admin uploads → publish → use <SnapshotImage slotKey="page.slot" fallbackSrc=… /> on the portal page.
+  - Add a theme token: extend SnapshotKeys.Theme + the portal THEME_CSS_VAR_MAP mapping; seed a default.
+  - Prod deploy checklist: run SqlServer scripts (Docs/Database/SQL/20260609_Add_PublishedSnapshot_Table.sql, 20260609_Add_ScreenImageSlot_Table.sql) + seed (DB_Seed_20260609_CmsThemeAndImageSlots.sql); set ObjectStorage:RootPath to the Render disk mount + ObjectStorage:PublicBaseUrl to the served/CDN base; set Web VITE_API_BASE_URL.
+  - Failure modes: bucket/CDN down → portal API fallback; missing slot image → bundled fallbackSrc (no broken image); no active snapshot → manifest 404, portal uses fallbacks + default theme.
+
 END OF SECTION 9
 
 # SECTION 10 — AUTH, SECURITY & API ARCHITECTURE
@@ -8747,6 +8896,7 @@ The endpoints below were discovered in the backend controller sources during the
    - GET  /api/booking-lookups/slots — Available slots (`GetSlotsAsync`)
 
 - BookingController
+   - GET  /api/bookings/public/settings — Public booking-mode flags (`GetPublicSettingsAsync`) [AllowAnonymous]
    - POST /api/bookings/guest — Create guest booking (`CreateGuestBookingAsync`)
    - POST /api/bookings/customer — Create customer booking (`CreateCustomerBookingAsync`)
    - GET  /api/bookings/{bookingId} — Get booking by id (`GetBookingByIdAsync`)

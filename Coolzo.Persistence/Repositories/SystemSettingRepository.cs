@@ -49,4 +49,15 @@ public sealed class SystemSettingRepository : ISystemSettingRepository
             .OrderBy(setting => setting.SettingKey)
             .ToArrayAsync(cancellationToken);
     }
+
+    public Task<SystemSetting?> GetTrackedByKeyAsync(string settingKey, CancellationToken cancellationToken)
+    {
+        return _dbContext.SystemSettings
+            .FirstOrDefaultAsync(setting => setting.SettingKey == settingKey && !setting.IsDeleted, cancellationToken);
+    }
+
+    public Task AddAsync(SystemSetting systemSetting, CancellationToken cancellationToken)
+    {
+        return _dbContext.SystemSettings.AddAsync(systemSetting, cancellationToken).AsTask();
+    }
 }

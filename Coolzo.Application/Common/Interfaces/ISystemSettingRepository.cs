@@ -9,4 +9,8 @@ public interface ISystemSettingRepository
     Task<IReadOnlyDictionary<string, SystemSetting>> GetByKeysAsync(IReadOnlyCollection<string> settingKeys, CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<SystemSetting>> ListAsync(CancellationToken cancellationToken);
+
+    Task<SystemSetting?> GetTrackedByKeyAsync(string settingKey, CancellationToken cancellationToken);
+
+    Task AddAsync(SystemSetting systemSetting, CancellationToken cancellationToken);
 }
