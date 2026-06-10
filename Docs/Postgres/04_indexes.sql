@@ -297,7 +297,10 @@ CREATE INDEX "IDX_tblRefundStatusHistory_RefundRequestId_ChangedOn"
 CREATE INDEX "IDX_tblRevisitRequest_BookingId_RequestedDateUtc"
   ON public."tblRevisitRequest" ("BookingId", "RequestedDateUtc");
 
-CREATE UNIQUE INDEX "UK_tblRevisitRequest_WarrantyClaimId"
+-- NOTE (2026-06-11): a warranty claim may legitimately spawn MORE THAN ONE revisit request over the
+-- warranty window (confirmed business rule). The EF model never declared this column unique. Changed
+-- from UNIQUE to a plain lookup index so a 2nd revisit on the same claim does not fail.
+CREATE INDEX "IDX_tblRevisitRequest_WarrantyClaimId"
   ON public."tblRevisitRequest" ("WarrantyClaimId");
 
 CREATE INDEX "IDX_tblRole_CompanyId_SiteId"
@@ -525,7 +528,11 @@ CREATE UNIQUE INDEX "UK_tblJobChecklistResponse_JobCardId_ServiceChecklistMaster
 CREATE UNIQUE INDEX "UK_tblJobDiagnosis_JobCardId"
   ON public."tblJobDiagnosis" ("JobCardId");
 
-CREATE UNIQUE INDEX "UK_tblJobPartConsumption_StockTransactionId"
+-- NOTE (2026-06-11): EF models StockTransaction -> JobPartConsumptions as ONE-TO-MANY
+-- (JobPartConsumptionConfiguration: HasOne(StockTransaction).WithMany(JobPartConsumptions)).
+-- StockTransactionId is NOT NULL, so a UNIQUE index here would 500 the 2nd consumption row that
+-- shares a stock transaction. Changed to a plain lookup index to match the EF model.
+CREATE INDEX "IDX_tblJobPartConsumption_StockTransactionId"
   ON public."tblJobPartConsumption" ("StockTransactionId");
 
 CREATE UNIQUE INDEX "UK_tblLeadConversion_LeadId_ConversionType"
@@ -606,7 +613,12 @@ CREATE UNIQUE INDEX "UK_tblSupportTicketCategory_CategoryCode"
 CREATE UNIQUE INDEX "UK_tblSupportTicketPriority_PriorityCode"
   ON public."tblSupportTicketPriority" ("PriorityCode");
 
-CREATE UNIQUE INDEX "UK_tblSystemAlert_AlertCode"
+-- NOTE (2026-06-11): AlertCode is a reusable event/category code (e.g. 'lead.received',
+-- 'booking.received'), NOT a unique key — many alerts legitimately share one code. The
+-- previous UNIQUE index here caused every 2nd-onward lead/booking to fail on insert
+-- (23505 on the alert write). The EF model never declared this column unique. Kept as a
+-- plain (non-unique) lookup index to match the code model.
+CREATE INDEX "IDX_tblSystemAlert_AlertCode"
   ON public."tblSystemAlert" ("AlertCode");
 
 CREATE UNIQUE INDEX "UK_tblSystemConfiguration_ConfigurationGroup_ConfigurationKey"

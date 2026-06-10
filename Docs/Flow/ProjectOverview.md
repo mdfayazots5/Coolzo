@@ -2884,6 +2884,242 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
 
 ---
 
+## PUBLIC WEBSITE MASTER DATA CATALOG (Frontend/Web — public site)
+
+Purpose: single registry of every MASTER (reference / catalog) data set surfaced on the public
+Website (Frontend/Web), which page renders it, the read endpoint, and the backing DB table.
+"Master" here = admin-maintained reference data the public consumes read-only (anonymous).
+
+Surface: Frontend/Web/src — React + Vite. Catalog masters served by BookingLookupController and
+ServiceTypesController (all AllowAnonymous) via Frontend/Web/src/services/catalogService.ts.
+CMS/content masters served as a published static snapshot (snapshotService.ts → ContentContext).
+
+### A. CATALOG / BOOKING MASTERS (BookingLookupController + ServiceTypesController — AllowAnonymous)
+
+| # | Master | Read Endpoint | DB Table(s) | Website page(s) that render it |
+|---|--------|---------------|-------------|--------------------------------|
+| 1 | Service Categories | GET /api/booking-lookups/service-categories | ServiceCategories | Home (Services.tsx category grid), Services (filter chips), BookingWizard Step 1 |
+| 2 | Services | GET /api/booking-lookups/services | Services (incl. ImageUrl), ServiceCategories | Home, Services, ServiceDetail, BookingWizard Step 1–2 |
+| 3 | Service Types (public catalog) | GET /api/service-types (+ /{id}, /{id}/sub-types) | Services (read), CMSBlocks (FAQ inject) | Public service catalog / ServiceDetail (alt catalog endpoint; sub-types currently empty) |
+| 4 | AC Types | GET /api/booking-lookups/ac-types | AcTypes | BookingWizard Step 2 (required selection) |
+| 5 | Tonnages | GET /api/booking-lookups/tonnage | Tonnages | API live + booking DTO field (TonnageId OPTIONAL — technician verifies on-site); NOT a rendered wizard step today [VERIFY if a future tonnage step is added] |
+| 6 | Brands | GET /api/booking-lookups/brands | Brands | API live + booking DTO field (BrandId OPTIONAL — technician verifies on-site); NOT a rendered wizard step today [VERIFY] |
+| 7 | Zones | GET /api/booking-lookups/zones ; GET /api/booking-lookups/zones/by-pincode/{pincode} | Zones, ZonePinCodes | BookingWizard Step 3 (pincode → zone resolution); Portal Addresses.tsx |
+| 8 | Service Slots / Availability | GET /api/booking-lookups/slots?zoneId&slotDate | SlotAvailability, ServiceSlots | BookingWizard Step 4 (date & time slot) |
+
+Notes on usage:
+  - Wizard loads categories + services + ac-types once on mount (BookingWizard.tsx ~L185-187).
+  - Tonnage and Brand masters are reachable (AllowAnonymous) and the GuestBookingCreateRequest /
+    customer booking DTOs accept TonnageId?/BrandId? as OPTIONAL (null at booking; technician
+    confirms on-site — changed 2026-06-08). The current public wizard does not render them as steps.
+  - AcTypeId is REQUIRED on booking; SlotAvailabilityId required only when IsEmergency=false.
+
+### B. CMS / CONTENT MASTERS (published snapshot — snapshotService.ts → ContentContext)
+
+These are admin-maintained content masters delivered to the public site via a static published
+snapshot (theme + content blocks + screen images), with IMemoryCache-backed API fallback.
+
+| # | Master | Source | Website page(s) |
+|---|--------|--------|-----------------|
+| 9  | Content Blocks (CMS) | snapshot.content.blocks (getBlock) | Home, About, WhyCoolzo, AMC, Contact, Services copy |
+| 10 | Screen Images / Theme | snapshot.images + snapshot.theme (getImage) | All public pages (hero/section imagery, theme tokens) |
+| 11 | FAQs | CMS (injected into Get Service Type Detail .Faqs; CMS blocks) | ServiceDetail FAQ, Home/AMC FAQ sections |
+| 12 | Testimonials / Reviews | reviewService.ts (public reviews) | Reviews.tsx, Home testimonials |
+| 13 | Blog Posts | cms/blog (public) | Blog.tsx, BlogDetail.tsx |
+| 14 | Promotional Offers | marketingService.ts | Home / offers surfaces (customer-marketing) |
+
+### PHYSICAL SCHEMA (confirmed 2026-06-10 from EF configs — Supabase Postgres, tbl-prefix, PascalCase quoted columns)
+Tables use the SQL-standard naming (tbl prefix) even on Postgres; columns are PascalCase (must be
+double-quoted in Postgres SQL). All business tables carry audit columns via ConfigureAuditColumns().
+  - tblServiceCategory   — ServiceCategoryId(PK identity), CategoryName, Description, SortOrder, IsActive, IsDeleted, +audit
+  - tblService           — ServiceId(PK identity), ServiceCode(UNIQUE, req, ≤64), ServiceName(req ≤128),
+                           Summary(req ≤512), ImageUrl(≤512), EstimatedDurationInMinutes(default 60),
+                           BasePrice numeric(18,2), IsActive(default true), ServiceCategoryId(FK→tblServiceCategory),
+                           PricingModelId(FK→tblPricingModel), SortOrder, IsDeleted, +audit
+                           ⚠ DEPENDENCY: a tblPricingModel row must exist before inserting services.
+  - tblPricingModel      — PricingModelId(PK identity), PricingModelName(req UNIQUE ≤128), Description(req ≤256),
+                           BasePrice numeric(18,2), IsActive(default true), +audit
+  - tblAcType            — AcTypeId(PK), AcTypeCode(req ≤64), AcTypeName(req ≤128), Description(req ≤256), IsActive, +audit
+  - tblTonnage           — TonnageId(PK), TonnageCode(req ≤64), TonnageName(req ≤128), Description(req ≤256), IsActive, +audit
+  - tblBrand             — BrandId(PK), BrandCode(req ≤64), BrandName(req ≤128), Description(req ≤256), IsActive, +audit
+  - tblServiceCategory   — ServiceCategoryId(PK), CategoryCode(req ≤64), CategoryName(req ≤128), Description(req ≤256), IsActive, +audit
+  - tblZone              — ZoneId(PK), ZoneCode(req ≤64), ZoneName(req ≤128), CityName(req ≤128), IsActive, +audit
+  - tblZonePincode       — ZonePincodeId(PK), Pincode(req ≤16), ZoneId(FK→tblZone), IsActive, +audit
+  - tblSlotConfiguration — SlotConfigurationId(PK), ZoneId(FK→tblZone), SlotLabel(req ≤64), StartTime(time),
+                           EndTime(time), MaxBookingCount(default 1), IsActive(default true), +audit;
+                           UNIQUE (ZoneId, StartTime, EndTime)
+  - tblSlotAvailability  — SlotAvailabilityId(PK), ZoneId(FK), SlotConfigurationId(FK→tblSlotConfiguration),
+                           SlotDate(date), AvailableCapacity(default 1), ReservedCapacity(default 0),
+                           IsBlocked(default false), +audit; UNIQUE (ZoneId, SlotDate, SlotConfigurationId).
+                           No IsActive column (active state derives from SlotConfiguration).
+                           ⚠ slots are NOT a flat "ServiceSlots" table — SlotConfiguration (template) + per-date SlotAvailability.
+
+Audit columns (ConfigureAuditColumns, all tables above): CompanyId(def 1), SiteId(def 1), BranchId(def 1),
+  DepartmentId?, Tag?, Comments?, DisplayOnWeb(def true), IsPublished(def true), DatePublished?, PublishedBy?,
+  SortOrder(def 0), IPAddress(def '127.0.0.1'), CreatedBy(def 'System'), DateCreated(default GETUTCDATE() —
+  ⚠ SQL-Server fn, NOT valid on Postgres), UpdatedBy?, LastUpdated?, DeletedBy?, DateDeleted?, IsDeleted(def false).
+
+Seed SQL (Phase 3): Backend/Database/Seeds/00..09 (Supabase Postgres, realistic Hyderabad placeholders,
+  explicit audit columns, idempotent). EXECUTED on prod Supabase 2026-06-10 — active counts: pricing 2,
+  categories 5, services 11, acTypes 5, tonnages 4, brands 9, zones 20, pincodes 113 (full 500001-500113
+  Hyderabad coverage — known localities zoned specifically, rest → "Hyderabad (City-wide)" catch-all zone
+  ZN-HYD-CITY), slotConfigs 60 (20 zones × 3 windows), slotAvailability 840 (14 days).
+  07 = more named zones+pincodes; 08 = all-Hyderabad-pincodes catch-all; 09 = booking flags.
+  Booking flags in tblSystemSetting set: Booking.OpenBookingMode=false (slot required),
+  Booking.EnforceSlotCapacity=true (capacity enforced). Prices/capacity remain placeholders to tune before launch.
+  ⚠ tblSystemSetting audit columns EXCLUDE BranchId (ConfigureAuditColumns includeBranchId:false) —
+  inserts to it must omit "BranchId". Columns: SettingKey(UNIQUE ≤128), SettingValue(req ≤512), DataType(req ≤64), IsSensitive.
+
+DB EXECUTION (operational): live DB = Supabase Postgres; connection at appsettings.json
+  ConnectionStrings:PostgresConnection. SQL is run directly via a dotnet/Npgsql console runner
+  (psql not installed; PS 5.1 can't load net8 Npgsql). Do not require manual SQL runs. See memory.
+Notes on Drift (2026-06-10, RESOLVED): brain previously listed logical names only; physical tables are
+  tbl-prefixed (PascalCase quoted columns), masters carry *Code natural keys, Service depends on
+  PricingModel, slots = SlotConfiguration+SlotAvailability, DateCreated default is SQL-Server-specific
+  (seed sets it explicitly).
+
+### MASTER COUNT (public Website)
+  - Catalog/Booking masters surfaced anonymously: 8 (Service Categories, Services, Service Types,
+    AC Types, Tonnages, Brands, Zones, Service Slots).
+  - CMS/Content masters: 6 (Content Blocks, Screen Images/Theme, FAQs, Testimonials/Reviews,
+    Blog Posts, Promotional Offers).
+  - Of the 8 catalog masters, 6 are actively rendered in the public booking/catalog UI today
+    (Categories, Services, Service Types, AC Types, Zones, Slots); Tonnages & Brands are
+    API-available and DTO-supported but not rendered as wizard steps.
+
+Notes on Drift:
+  - catalogService.ts exposes getTonnages()/getBrands() but no public page consumes them yet
+    (only acTypeId/tonnageId/brandId appear as optional fields in types/booking.ts). Documented as
+    "API live, UI not rendered" rather than removed, since the booking DTO still accepts them.
+  - Slot DTO field naming differs between brain (SlotLabel/IsAvailable) and web type
+    (displayLabel/isFullyBooked) — web maps via SlotAvailabilityResponse in types/catalog.ts.
+
+---
+
+## PUBLIC WEBSITE — UI ARCHITECTURE (Website Rework Phase 0, 2026-06-10)
+
+Surface: Frontend/Web (React 19 + Vite + Tailwind CSS v4). Governing plan:
+`Backend/Docs/Flow/Website_Rework_Plan.md`. Governing UI rules:
+`Backend/Docs/Rules/Web_Responsive_Standard.md` (binding, QA-enforced).
+
+Shared layout primitives (every public page must use these — no per-page max-width/padding/grid):
+  - Container (Frontend/Web/src/components/Container.tsx) — page width + gutters
+    (width: default=max-w-7xl/1280px, narrow=max-w-3xl, wide=max-w-[90rem]; px-5 sm:px-6 lg:px-8)
+  - Section (Frontend/Web/src/components/Section.tsx) — vertical rhythm + surface
+    (spacing: compact/default/loose/none; surface: transparent/cream/white/navy)
+  - Grid (Frontend/Web/src/components/Grid.tsx) — responsive columns (cols 2|3|4; always collapse to 1 on phone)
+
+Theme tokens (src/index.css @theme — source of truth for Web):
+  brand-navy #0A192F, brand-gold #D4AF37, brand-cream #FDFCFB, brand-black #050505;
+  font-serif Cormorant Garamond (headings), font-sans Inter (body/UI).
+  Root font scales 16→17(≥640)→18(≥1024) px.
+
+Definition of Stable (QA device matrix): phone 360/390/430, tablet 768/820, desktop 1280/1440 —
+all green (no h-scroll, no overlap, ≥44px touch targets, all 4 async states reachable) before sign-off.
+
+Phase 0 status: primitives + standard delivered, additive only (not yet wired into pages — zero
+behavior change). tsc --noEmit passes. Page rebuilds happen in Phase 2 on these primitives.
+
+Phase 2 status (2026-06-10): public spine rebuilt on the primitives; tsc + vite build pass.
+  - Nav de-scope: Navbar nav = Services only; Footer = Quick Links (Services/Book/Terms/Privacy) +
+    Get in Touch contact block (phone/WhatsApp/email/city — PLACEHOLDER numbers, replace before launch).
+    Blog routes removed from App.tsx (Blog.tsx/BlogDetail.tsx orphaned, deletable). About/WhyCoolzo/
+    Reviews/AMC routes kept but hidden from nav (deferred).
+  - Home.tsx rebuilt: service-first hero (AC repair/service/install/gas; Book + View Services CTAs),
+    honest trust strip (removed picsum avatars + wikipedia brand logos), live service categories with
+    loading state + static fallback, Hyderabad coverage, How-it-works, final CTA. AMC section removed.
+  - Services.tsx rebuilt on Container/Grid: fixed empty-state-rendered-during-loading bug; booking
+    links now auth-aware (/portal/book vs /book); search/filter retained; per-service image aspect box.
+  - ServiceDetail.tsx rebuilt: auth-aware booking; related services now REAL (same category from API)
+    instead of hardcoded fakes; reviews from API; FAQs from CMS with generic fallback; safe-area sticky
+    mobile CTA. Removed mock "Complementary Services".
+  - PLACEHOLDER contact numbers in Footer ([VERIFY] — replace +91 00000 00000 / wa.me / support@coolzo.in
+    with real values before launch). [Resolved: footer now CMS-driven with real fallback 7075949956/mdfayazots5@gmail.com]
+
+Mobile UX pass (2026-06-11) — public Web. Verified homepage at true 390px device emulation (CDP):
+  NO horizontal overflow (scrollWidth=390); earlier "clipping" was a headless --window-size artifact.
+  - Mobile density pass (2026-06-11, CEO call — reduce scroll/oversized sections): full-page mobile
+    height 6122px → 4814px (~21% less scroll).
+      * Section.tsx spacing tightened on phones (desktop unchanged): compact py-8 md:py-14,
+        default py-12 md:py-24, loose py-16 md:py-32.
+      * Footer.tsx now 2-col on mobile (grid-cols-2): brand + Get-in-Touch span both cols, Expertise &
+        Quick Links sit side-by-side; tighter pt-16/space-y-3/mb-12. Gold headings stay bright (#D4AF37
+        on black = good contrast).
+      * Home service cards now 2-up on mobile (grid grid-cols-2 lg:grid-cols-4) and compacted
+        (p-4, smaller icon, description line-clamp-2, "View details" hidden < sm, single Book Now CTA).
+        NOTE: this is a deliberate, CEO-approved exception to Web_Responsive_Standard "cards collapse to
+        single column on phones" — applied ONLY to the home services overview via a local grid override;
+        the shared Grid primitive is unchanged (still 1-col on phones for other pages).
+  - CTA de-dup (2026-06-11, CEO call): the top-nav "Book Service" button is now hidden below lg
+    (Navbar.tsx → `hidden lg:flex`) so mobile/tablet show a single persistent Book CTA (the sticky
+    MobileActionBar), not two fixed buttons. Desktop (lg+, no bottom bar) keeps the nav button. In-content
+    CTAs (hero/cards/CTA-band) and the footer link are intentional and unchanged.
+  - NEW component MobileActionBar.tsx: persistent bottom CTA bar (lg:hidden) on the public Layout —
+    "Call" (tel: from CMS contact.phone, same source as Footer) + "Book Service" (auth-aware path like
+    Navbar). Hidden on /book and /booking-confirmation. Uses safe-area-pb. Footer pb-28 lg:pb-12 added so
+    its bottom row clears the fixed bar.
+  - App.tsx wrapped in <MotionConfig reducedMotion="user"> — whileInView sections (opacity:0 initial) now
+    render final state for reduced-motion users instead of risking blank gaps.
+  - P2 DONE (2026-06-11, user-authorized theme change): small gold eyebrow/label text on LIGHT surfaces
+    was #D4AF37 on cream = ~2:1 (fail WCAG AA). Added theme token --color-brand-gold-deep (#8A6D1A =
+    4.8:1 on cream / 4.9:1 on white) in index.css and switched light-surface eyebrows/stat-labels/
+    card-categories/links to text-brand-gold-deep across Home, About, Blog, BlogDetail, AMC, WhyCoolzo,
+    Pricing, Reviews, Contact, Services, Forgot/ResetPassword. KEPT bright #D4AF37 on dark (navy/black)
+    surfaces — hero eyebrows, navy CTA/promise bands, Footer, WhyCoolzo table header, on-image overlays —
+    where it already passes (8.4:1 on navy). Gold BUTTON backgrounds + icon fills unchanged. tsc passes.
+  - P4 DONE (2026-06-11): Home service cards now show "From ₹X" (min basePrice per category, computed
+    from GET /api/booking-lookups/services joined to categories by serviceCategoryId; "Priced on
+    inspection" when no priced service). CTAs simplified to one primary "Book Now" (navy, passes
+    serviceCategoryId/Name to booking) + subtle "View details" link. Home.tsx fetches categories+services
+    via Promise.allSettled. tsc passes; verified From ₹199 (Repair) / ₹399 (Service) render on mobile.
+  - Still recommended (not yet done): homepage reviews strip; trust strip 2x2 on mobile; replace
+    decorative arch image with a Hyderabad coverage map.
+
+Phase 5 status (2026-06-10): public conversion pages added/rebuilt on primitives (tsc + build pass).
+  - Navbar nav re-expanded: Services, AMC Plans, Pricing, Reviews, Contact + Login icon (LogIn) for
+    existing users (desktop + mobile menu). Pricing route added to App.tsx.
+  - AMC.tsx: lists AMC-category services from the PUBLIC catalog (CatalogService; real prices, anonymous;
+    auth-only /api/amc/plans NOT used) + benefits + Enroll→booking (auth-aware).
+  - Reviews.tsx: real reviews via GET /api/customer-reviews (anonymous, all), computed avg/distribution,
+    load-more; removed fake video/named-testimonial placeholders.
+    Notes on Drift (2026-06-11 — request/response drift, Web): the endpoint returns `data` as a BARE
+    ARRAY (no paging envelope) and uses fields customerReviewId/userName/userPhoto/createdAt. The Web
+    page expected PagedResult.items with reviewId/customerName/dateCreated, so nothing bound (items was
+    undefined → []). Fixed in reviewService.ts: getReviews normalizes the bare array → PagedResult and
+    maps raw fields → ReviewResponse (customerReviewId→reviewId, userName→customerName, userPhoto→
+    customerPhoto, createdAt→dateCreated); hasNext=false until backend paginates. submitReview maps too.
+    No backend/mobile contract change. Backend list endpoint still does NOT honor pageNumber/pageSize. [VERIFY]
+  - Pricing.tsx (NEW): services grouped by category with BasePrice ("From ₹…"/"On inspection") + Book CTA.
+  - Contact.tsx: contact details from CMS (contact.* with real fallback); form submits a real lead via
+    POST /api/leads (AllowAnonymous, sourceChannel="web") — services/contactService.ts. Loading/
+    error/success states. CreateLeadRequest: CustomerName, MobileNumber, EmailAddress, SourceChannel, InquiryNotes(+more optional).
+    SourceChannel is validated by LeadManagementSupport.TryParseLeadSourceChannel — ACCEPTED (normalized,
+    case/separator-insensitive): website|web, app|mobileapp|mobile, phone|call, whatsapp, manual|admin,
+    or an exact LeadSourceChannel enum name. Anything else → 400 "Lead source channel is invalid."
+    Notes on Drift (2026-06-11 — request drift, Web): Contact.tsx sent "web-contact" (normalizes to
+    "webcontact" → no match) so submit 400'd. Fixed to "web" (matches BookingWizard). The contact subject
+    is carried inside InquiryNotes as "[Subject] message", not via SourceChannel.
+
+Phase 4 status (2026-06-10): CMS module completion — ADMIN content-block editor.
+  - Backend CMS already complete: CMSController /api/cms admin/blocks (GET/POST/PUT), admin/banners,
+    admin/faqs, admin/theme (GET/PUT), admin/image-slots (+upload), publish, rollback/{v},
+    snapshot/manifest, snapshot/{v}. Block contract: CMSBlockUpsertRequest {BlockKey,Title,Summary,
+    Content,PreviewImageUrl,IsActive,IsPublished,SortOrder}; CMSBlockResponse adds CMSBlockId,VersionNumber,dates.
+  - Admin UI (Frontend/Admin is REACT/TSX, not Angular): CmsDeliveryManager.tsx had Theme/Images/
+    Publish tabs; ADDED a "Content Blocks" tab + repository methods getBlocks/createBlock/updateBlock.
+    Admin can now create/edit any keyed block incl. footer contacts (contact.phone/whatsapp/email/city —
+    quick-add buttons for missing ones), toggle Published, then Publish to push live. tsc passes.
+  - Public footer (Frontend/Web Footer.tsx) reads getBlock("contact.*").content from the published
+    snapshot, falling back to real values. To make footer CMS-sourced: admin adds the contact.* blocks
+    (quick-add) and Publishes (one-time). Until then the real fallback values display.
+
+Notes on Drift:
+  - CLAUDE.md DESIGN SYSTEM table hexes (navy #1B2A4A, gold #C9A84C, Inter-only) differ from the
+    implemented Web theme above. Decision 2026-06-10: implemented Web theme is source of truth;
+    do not change Web colors/fonts without explicit instruction.
+
+---
+
 ## ServiceTypes API (Public Catalog)
 
 ### Flow: Get Service Types (Public)
@@ -3043,6 +3279,51 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
   Notes on Drift: Endpoint exists so the public wizard reads the SAME two flags the create handlers
                   enforce, preventing UI/server divergence (client can't submit a no-slot booking the
                   server would 400, and vice-versa).
+
+---
+
+## WEB BOOKING WIZARD — CLIENT CONTRACT & STABILITY (Frontend/Web, Phase 1 — 2026-06-10)
+
+File: Frontend/Web/src/pages/BookingWizard.tsx (single component, 5 visible steps).
+Service layer: Frontend/Web/src/services/bookingService.ts. API error shape (apiClient interceptor):
+rejects with { status, message, fieldErrors, raw } — callers read err.status / err.message.
+
+Step sequence (driven by feature flags + auth):
+  Guest, slot required:        1 Service → 2 Location → 3 Date/Slot → 4 Contact → 5 Confirm
+  Guest, OpenBookingMode:      1 → 2 → 4 → 5 (slot step skipped; admin schedules later)
+  Logged-in, slot required:    1 → 2 → 3 → 5 (contact step skipped; name/mobile from profile)
+  Logged-in, OpenBookingMode:  1 → 2 → 5
+  Flags loaded once on mount via GET /api/bookings/public/settings; Step 1 shows a loader until
+  catalog + settings resolve, so openBookingMode is stable before any navigation (no mid-flow shift).
+
+serviceId resolution rule (CRITICAL):
+  serviceId sent to the API MUST be a Service id, never a ServiceCategory id.
+  Normal categories require a sub-type selection (Step-1 validation). AMC/Other skip the sub-type row,
+  so the client resolves serviceId = serviceSubTypeId ?? firstServiceInCategory.serviceId. If the
+  category has no bookable service, the client BLOCKS submit with a message (does not send a category id).
+
+slotDate rule:
+  Wizard sends slotDate as a LOCAL calendar date (toLocalDateStr) — never toISOString() (UTC), which
+  shifted the date a day back for IST users in early hours.
+
+Submit error mapping (describeBookingError):
+  409 → "That time slot was just taken. Please pick another time window or date."
+  400 → surfaces backend message (e.g. serviceability / validation).
+  else → backend message if present, else generic retry. (401 is auto-handled by apiClient → /session-expired.)
+
+Idempotency: client generates crypto.randomUUID() as X-Idempotency-Key on every create call
+  (createCustomerBooking / createGuestBooking).
+
+Notes on Drift (fixed 2026-06-10, Phase 1):
+  - DRIFT (request): serviceId fell back to ServiceCategory id for AMC/Other categories
+    (`data.serviceSubTypeId ?? data.serviceTypeId!`) → invalid serviceId → intermittent booking
+    failures. Fixed: resolve to a real Service id or block. [VERIFY with Product the intended
+    representative service for AMC/Other categories — currently first service in category.]
+  - DRIFT (date): UTC date via toISOString caused off-by-one slotDate for IST early-hours users. Fixed.
+  - DRIFT (error UX): generic catch hid 409/400 reasons → blind retries. Fixed with status mapping.
+  - KNOWN GAP [VERIFY]: WizardData carries isEmergency/emergencySurcharge and Step 5 renders an
+    emergency badge, but no Step-3 UI sets them — web cannot currently create an emergency booking
+    (slotWindow "Emergency" is declared but unused). Backend supports it; web UI is a Phase-2/PM decision.
 
 ---
 
@@ -6824,6 +7105,38 @@ tblPartsReturn (GapPhaseA)
 ---
 
 ## MODULE: Lead Management
+
+Notes on Drift (2026-06-11 — DB contract drift, ROOT CAUSE of "unexpected_error" on POST /api/leads):
+  Symptom: every public Contact-form lead after the very first returned 500 unexpected_error
+  ("An error occurred while saving the entity changes"). Same failure hit POST /api/bookings/guest.
+  Real cause: the live Postgres DB had a UNIQUE index `UK_tblSystemAlert_AlertCode` on
+  tblSystemAlert.AlertCode, but AlertCode is a REUSED event code. CreateLeadCommandHandler raises a
+  SystemAlert via GapPhaseANotificationService.RaiseAlertAsync with constant alertCode="lead.received"
+  (a TriggerCode/category — see SystemHealthFeature.RequiredTriggerCodes), so the 1st lead inserted
+  AlertCode='lead.received' and every later lead collided → 23505 unique violation → whole
+  SaveChanges rolled back. The EF model (LeadConfiguration/SystemAlert config) NEVER declared
+  AlertCode unique → the unique index was hand-written-script drift (04_indexes.sql). Only
+  GlobalExceptionMiddleware survived because it uniquifies its code as
+  "system.unhandled_exception.{traceId}".
+  Fix (Backend Engineer owning; DB Architect + Chief Architect + QA): dropped the unique index on the
+  live DB and replaced it with a NON-unique lookup index `IDX_tblSystemAlert_AlertCode`; corrected
+  Backend/Docs/Postgres/04_indexes.sql so a fresh deploy can't reintroduce it. No app code changed
+  (AlertCode is intentionally reused; the EF model is the source of truth). Verified: two consecutive
+  POST /api/leads now return 200 (leadIds 12,13 — test rows removed afterward).
+  Generalize: any UNIQUE index on a reusable "*Code"/category column is suspect; audit 04_indexes.sql.
+
+  Audit (2026-06-11) — diffed ALL 90 live-DB UNIQUE indexes vs the EF model's declared unique set.
+  Only 3 DB-only unique indexes (not declared in EF = drift) existed:
+    1. UK_tblSystemAlert_AlertCode            → FIXED (dropped; reused event code).  [this incident]
+    2. UK_tblJobPartConsumption_StockTransactionId → FIXED (dropped → IDX_…). EF models
+       StockTransaction.WithMany(JobPartConsumptions) i.e. 1:many, and the col is NOT NULL, so the
+       unique index would 500 the 2nd part-consumption sharing a stock transaction. (table empty; latent)
+    3. UK_tblRevisitRequest_WarrantyClaimId   → FIXED (dropped → IDX_…). Business confirmed a warranty
+       claim MAY have more than one revisit request; col was nullable + not configured in EF. Now a plain
+       lookup index so a 2nd revisit on the same claim does not fail.
+  All other 87 unique indexes are legitimate (declared in EF: natural keys, generated *Number/*Reference,
+  master *Code columns, 1:1 FKs, composite natural keys). 04_indexes.sql corrected for #1, #2 and #3.
+  Live DB verified: 0 drift unique indexes remaining.
 
 Entry Points:         Public website inquiry form (AllowAnonymous), Admin lead list (/admin/leads)
 UI Trigger:           Customer submits inquiry form; Admin opens Leads list
