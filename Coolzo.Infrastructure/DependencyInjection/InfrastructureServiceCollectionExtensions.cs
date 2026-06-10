@@ -1,4 +1,6 @@
 using System.Text;
+using Amazon.Runtime;
+using Amazon.S3;
 using Coolzo.Application.Common.Interfaces;
 using Coolzo.Infrastructure.Identity;
 using Coolzo.Infrastructure.Logging;
@@ -41,8 +43,19 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IInstallationLifecycleReferenceGenerator, InstallationLifecycleReferenceGenerator>();
         services.AddScoped<IJobAttachmentStorageService, LocalJobAttachmentStorageService>();
 
-        services.Configure<ObjectStorageOptions>(configuration.GetSection(ObjectStorageOptions.SectionName));
-        services.AddScoped<IObjectStorageService, FileSystemObjectStorageService>();
+        var objectStorageSection = configuration.GetSection(ObjectStorageOptions.SectionName);
+        services.Configure<ObjectStorageOptions>(objectStorageSection);
+        var objectStorageOptions = objectStorageSection.Get<ObjectStorageOptions>() ?? new ObjectStorageOptions();
+
+        if (string.Equals(objectStorageOptions.Provider, ObjectStorageOptions.S3Provider, StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IAmazonS3>(_ => CreateS3Client(objectStorageOptions.S3));
+            services.AddScoped<IObjectStorageService, S3ObjectStorageService>();
+        }
+        else
+        {
+            services.AddScoped<IObjectStorageService, FileSystemObjectStorageService>();
+        }
 
         services.AddScoped(typeof(IAppLogger<>), typeof(AppLogger<>));
 
@@ -75,5 +88,32 @@ public static class InfrastructureServiceCollectionExtensions
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Builds an S3 client for an S3-compatible vendor. For Cloudflare R2 (and MinIO/Backblaze) set
+    /// S3.ServiceUrl to the account endpoint and keep ForcePathStyle = true; for native AWS S3 leave
+    /// ServiceUrl empty so the SDK resolves the regional endpoint. Credentials come from configuration
+    /// / environment (ObjectStorage:S3:AccessKey, :SecretKey) — never hardcoded.
+    /// </summary>
+    private static IAmazonS3 CreateS3Client(S3StorageOptions s3Options)
+    {
+        var config = new AmazonS3Config
+        {
+            ForcePathStyle = s3Options.ForcePathStyle,
+            AuthenticationRegion = s3Options.Region
+        };
+
+        if (!string.IsNullOrWhiteSpace(s3Options.ServiceUrl))
+        {
+            config.ServiceURL = s3Options.ServiceUrl;
+        }
+        else
+        {
+            config.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(s3Options.Region);
+        }
+
+        var credentials = new BasicAWSCredentials(s3Options.AccessKey, s3Options.SecretKey);
+        return new AmazonS3Client(credentials, config);
     }
 }

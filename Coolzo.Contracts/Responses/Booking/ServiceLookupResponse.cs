@@ -6,4 +6,5 @@ public sealed record ServiceLookupResponse(
     string ServiceName,
     string Summary,
     decimal BasePrice,
-    string PricingModelName);
+    string PricingModelName,
+    string ImageUrl);

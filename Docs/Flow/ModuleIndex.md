@@ -103,8 +103,8 @@ IdempotencyKeys:
   - POST /report: prevents duplicate report on offline retry (FieldJobReportRequest.IdempotencyKey)
   - PATCH /payment: prevents duplicate charge (FieldJobPaymentRequest.IdempotencyKey)
 
-Screens: AttendanceScreen.tsx, TechnicianJobReportScreen.tsx (wrapper over JobWorkflowContainer),
-  OfflineSyncQueue.tsx (/system/sync)
+Screens: AttendanceScreen.tsx, TechnicianJobReportScreen.tsx (wrapper over JobWorkflowContainer)
+  (OfflineSyncQueue.tsx / route /system/sync removed 2026-06-10 — queue now surfaced inline only)
 
 Offline: FIELD_OFFLINE_QUEUE (StorageKey) → field-workflow-repository.ts → syncSubmission(id)
 

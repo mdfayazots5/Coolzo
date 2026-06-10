@@ -1,5 +1,6 @@
 using Coolzo.Application.Features.MasterDataAdmin.Commands.CreateDynamicMasterRecord;
 using Coolzo.Application.Features.MasterDataAdmin.Commands.UpdateDynamicMasterRecord;
+using Coolzo.Application.Features.MasterDataAdmin.Commands.UploadMasterImage;
 using Coolzo.Application.Features.MasterDataAdmin.Queries.GetDynamicMasterRecordList;
 using Coolzo.Contracts.Common;
 using Coolzo.Contracts.Requests.Admin;
@@ -90,5 +91,22 @@ public sealed class MasterDataAdminController : ApiControllerBase
             cancellationToken);
 
         return Success(response, "Dynamic master updated successfully.");
+    }
+
+    [HttpPost("upload-image")]
+    [Authorize(Policy = PermissionNames.LookupManage)]
+    public async Task<ActionResult<ApiResponse<MasterImageUploadResponse>>> UploadImageAsync(
+        [FromBody] MasterImageUploadRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new UploadMasterImageCommand(
+                request.Folder,
+                request.FileName,
+                request.ContentType,
+                request.Base64Content),
+            cancellationToken);
+
+        return Success(response, "Image uploaded successfully.");
     }
 }

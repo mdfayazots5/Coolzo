@@ -1235,7 +1235,10 @@ field-workflow-repository.ts capabilities:
   - Queues report/photo/signature/payment submissions with retry metadata
   - Applies optimistic updates offline
   - Exposes retry via fieldWorkflowRepository.syncSubmission(id)
-  - OfflineSyncQueue.tsx at route /system/sync surfaces all queued items
+  - Offline queue is surfaced inline via NetworkStatusBanner (pending count) + AdminScaffold bell badge.
+    Note on Drift (2026-06-10): the standalone OfflineSyncQueue.tsx page at route /system/sync was
+    removed (component + route + all UI links). Backend offline-sync infra (tblOfflineSyncQueueItem,
+    worker, repository methods) is unchanged and still authoritative.
 
 IdempotencyKey usage:
   - JobReport (Flow 10): prevents duplicate report on offline retry
@@ -2815,7 +2818,8 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
   Response DTO:   ApiResponse<IReadOnlyCollection<ServiceLookupResponse>>
     - ServiceId (long), ServiceCategoryId (long), ServiceName (string)
     - Summary (string), BasePrice (decimal), PricingModelName (string)
-  DB Tables:      Services (read), ServiceCategories (read)
+    - ImageUrl (string, "" when null) — per-service image; added 2026-06-10 (Phase 1)
+  DB Tables:      Services (read — incl. ImageUrl), ServiceCategories (read)
 
 ### Flow: Get AC Types
   API Endpoint:   GET /api/booking-lookups/ac-types
@@ -2889,7 +2893,8 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
   Response DTO:   ApiResponse<ServiceTypeListItemResponse[]>
     - Id (long), Name (string), Description (string), Category (string)
     - BasePrice (decimal), EstimatedDurationInMinutes (int), IconKey (string)
-  DB Tables:      Services (read), ServiceCategories (read)
+    - ImageUrl (string, "" when null) — per-service image; added 2026-06-10 (Phase 1)
+  DB Tables:      Services (read — incl. ImageUrl), ServiceCategories (read)
   Business Rules:
     1. IconKey resolved from category/service name: "repair" / "cleaning" /
        "installation" / "gas-refill" / "amc" / "service" (default)
@@ -2899,6 +2904,7 @@ Notes on Drift (phantom endpoints removed 2026-05-24):
   Auth:           AllowAnonymous
   Response DTO:   ApiResponse<ServiceTypeDetailResponse>
     - Id, Name, Description, Category, BasePrice, EstimatedDurationInMinutes, IconKey
+    - ImageUrl (string, "" when null) — per-service image; added 2026-06-10 (Phase 1)
     - SubTypes (ServiceTypeSubTypeResponse[]): currently always empty array
     - Faqs (CMSFaqResponse[]): public FAQ content injected from CMS
   DB Tables:      Services (read), CMSBlocks (read via FAQ query)
@@ -7571,6 +7577,83 @@ Current AdminMobile Phase 4 implementation
 - Workflow configuration screen manages `job-statuses`, `urgency-levels`, `skill-tags`, `sla-targets`, and auto-escalation rules; pricing configuration screen manages pricing matrix, AMC plans, payment terms, and warranty periods; tax configuration screen manages tax and invoice numbering.
 - These AdminMobile screens use the existing generic admin configuration surface exposed by `Backend/Coolzo.Api/Controllers/Phase4ConfigurationController.cs` under `/api/master/*` and `/api/config/*`.
 
+CATALOG-NATIVE SERVICE IMAGE (Admin Service & Equipment Catalog) — [IMPLEMENTED 2026-06-10]:
+  Purpose: give each Service Type a per-record image, uploaded + managed where the service is edited
+  (Admin → Service & Equipment Catalog → Service Types). Persisted in the master record itself; no new
+  table or column — the URL is stored inside the existing metadata JSON (masterValue).
+
+  Flow Name: Upload & Persist Service Catalog Image
+    Entry Point:    Frontend/Admin → ServiceCatalogScreen.tsx (Service Types tab), Add/Edit form.
+    UI Trigger:     "Service Image" Upload/Replace file input (PNG/JPEG/WebP/SVG ≤5MB) + preview + Remove.
+    Upload API:     POST /api/admin-masters/upload-image  (Authorize Policy=lookup.manage)
+                    Controller: MasterDataAdminController.UploadImageAsync
+                    Feature: MasterDataAdmin/Commands/UploadMasterImage/UploadMasterImageFeature.cs
+    Request DTO:    MasterImageUploadRequest { Folder, FileName, ContentType, Base64Content }
+                      Folder = master slug (e.g. "service-types"); validated ^[a-z0-9-]+$.
+    Response DTO:   MasterImageUploadResponse { Url }  (object-storage public URL)
+    Storage:        IObjectStorageService.PutObjectAsync → key "catalog/{folder}/{guid}{ext}"
+                    (same FileSystem/R2 provider as CMS screen images). STATELESS — upload writes the
+                    file + audit log only; it does NOT persist to the master record by itself.
+    Persistence (DB): the returned Url is placed in the form as metadata.imageUrl and saved on the
+                    EXISTING create/update master flow (POST/PUT /api/master/service-types →
+                    Phase4ConfigurationController) which serializes metadata into
+                    tblDynamicMasterRecord.MasterValue (JSON). So "save in DB" = save the service after upload.
+    Get & Bind:     GET /api/master/service-types → MasterValue JSON parsed to metadata →
+                    ServiceCatalogScreen hydrates form.imageUrl (preview) AND renders a list-card thumbnail.
+    Validation:     ContentType ∈ {png,jpeg,webp,svg+xml}; ≤5MB; base64 decodable. metadata.imageUrl is
+                    optional (omitted when blank).
+    Constraint:     MasterValue is capped at 512 chars (CreateDynamicMasterRecord validator). A typical
+                    service-types JSON + an object-storage URL stays well under this; keep public base
+                    URLs short. [VERIFY if very long CDN domains + many metadata fields approach 512.]
+    Failure Cases:  invalid type/size/base64 → 400 standard envelope; toast on the client. Upload success
+                    but service not saved → image orphaned in storage until a save references it.
+    Files:          Backend: MasterImageUploadRequest.cs, MasterImageUploadResponse.cs,
+                      UploadMasterImageFeature.cs, MasterDataAdminController.cs (UploadImageAsync).
+                    Admin: master-data-repository.ts (uploadMasterImage + MasterImageUpload),
+                      MasterDataProvider.tsx (uploadMasterImage passthrough), ServiceCatalogScreen.tsx
+                      (imageUrl form field, upload control, preview, list thumbnail).
+    Validation status: Backend build 0/0; Admin tsc --noEmit clean (2026-06-10).
+  Notes on Drift (cross-source — RECONCILIATION CHOSEN; canonical = tblService):
+    Two separate "service" representations exist: (1) the bookable tblService (entity Service) read by
+    the public site + booking + invoicing; (2) DynamicMasterRecord MasterType="ServiceType" edited by the
+    Admin "Service Types" catalog tab — NOT consumed by booking/public. Decision: tblService is canonical.
+    PHASE 1 DONE [2026-06-10]: added tblService.ImageUrl (NVARCHAR(512) NULL) + EF config; surfaced ImageUrl
+      in ServiceLookupResponse, ServiceTypeListItemResponse, ServiceTypeDetailResponse; public ServiceDetail.tsx
+      binds service.imageUrl with FALLBACK_IMG when empty. Migrations: SqlServer
+      Docs/Database/SQL/20260610_Add_Service_ImageUrl.sql, Postgres Docs/Postgres/20_add_service_imageurl.sql
+      [NOT yet applied to any DB — run before relying on the column]. Backend build 0/0; Web tsc clean.
+    PHASE 2 DONE [2026-06-10] (admin writes the real tblService.ImageUrl — additive, non-destructive):
+      New write endpoint PUT /api/admin/services/{serviceId}/image (Authorize Policy=lookup.manage)
+        Controller: ServiceCatalogAdminController (route api/admin/services)
+        Feature: ServiceCatalogAdmin/Commands/SetServiceImage/SetServiceImageFeature.cs
+        Request DTO: SetServiceImageRequest { ImageUrl (string?, null/empty = clear) }
+        Response DTO: ServiceLookupResponse (incl. ImageUrl)
+        Handler: loads the TRACKED entity via IBookingLookupRepository.GetServiceByIdAsync, sets
+          ImageUrl + UpdatedBy/LastUpdated, audit-logs, SaveChanges. 404 when service missing.
+      New admin screen: Frontend/Admin ServiceImagesScreen.tsx (route /settings/master/service-images,
+        RoleGuard module="settings"; discoverable via SystemConfigHomeScreen "Service Images" card).
+        Lists bookable services (GET /api/booking-lookups/services), per-service Upload/Replace/Remove.
+        Upload reuses POST /api/admin-masters/upload-image (folder="services") then immediately PUTs the
+        URL to /image — so the image is persisted to tblService and live on the public site in one action.
+        Repository: src/core/network/service-catalog-repository.ts (getServices, setServiceImage).
+      NOTE: this is a SEPARATE admin surface from the legacy DynamicMasterRecord "Service Types" catalog
+        tab (which still writes metadata.imageUrl, unused by the public site). Both coexist until Phase 3.
+      Validation status: Backend build 0/0; Admin tsc --noEmit clean (2026-06-10).
+    PHASE 3 DONE [2026-06-10] (retire the legacy taxonomy tab — UI-level, non-destructive):
+      Frontend/Admin ServiceCatalogScreen.tsx no longer exposes the "Service Types" tab (and its
+      now-redundant catalog-native image uploader — superseded by the Phase 2 Service Images screen).
+      Remaining tabs: Service Subtypes, Equipment Brands, Equipment Models. The Subtypes "Parent"
+      picker now sources from REAL bookable services (GET /api/booking-lookups/services) instead of the
+      DynamicMasterRecord "ServiceType" master — so subtypes hang off tblService. Stored
+      metadata.parentCode now holds the service NAME (was the old master code). Routes /settings/master/
+      services + /brands still map to this screen (now defaulting to Subtypes).
+      NOT done (intentionally deferred — low value, some risk): physically migrating/deleting existing
+      DynamicMasterRecord MasterType="ServiceType" rows from the DB, and building a full tblService admin
+      CRUD (create/rename/price a service). Today bookable services are created via DB seed; admin can
+      set their image (Phase 2). The orphaned "ServiceType" master rows are harmless (no consumer).
+      Public Services list cards (Frontend/Web Services.tsx) now also render service.imageUrl when present.
+      Validation status: Admin + Web tsc --noEmit clean (2026-06-10).
+
 
 7. CMS CONTENT & THEME DELIVERY (PUBLIC WEB PORTAL) — TARGET ARCHITECTURE & ROADMAP
 
@@ -7628,7 +7711,8 @@ Flow Name: CMS Snapshot Publish & Portal Hydration
     - Portal bucket fetch fails → fall back to GET /api/v1/cms/snapshot/manifest + /{version} (Redis-served).
     - Missing image slot → documented default asset; never a broken image.
   Recovery / Fallback: IMemoryCache-backed manifest + API snapshot read; rollback endpoint restores any retained version.
-  Notes on Drift: General IObjectStorageService (filesystem-backed, Render-disk ready) introduced in Phase 0 [2026-06-09] alongside the untouched IJobAttachmentStorageService. No Redis is used (rejected — see Caching decision). Portal now consumes the published snapshot via ContentProvider + SnapshotImage (Phase 4); home.hero/amc.banner/about.hero are backend-driven, other hardcoded images can be migrated incrementally with the same <SnapshotImage slotKey=...> pattern (add a tblScreenImageSlot row + use the component).
+  Storage Provider (selectable, ObjectStorage:Provider): "FileSystem" (default — local wwwroot / Render disk) OR "S3" (S3-compatible vendor). Both implement IObjectStorageService; callers (publish, upload, snapshot read) are provider-agnostic — switching providers is config-only, zero caller changes. S3 path targets Cloudflare R2 (also AWS S3 / Backblaze B2 / MinIO). PublicBaseUrl = the bucket's public/CDN base; when set, GetPublicUrl returns absolute URLs the portal uses directly (resolveAssetUrl passes http(s) URLs through untouched).
+  Notes on Drift: General IObjectStorageService introduced in Phase 0 [2026-06-09] alongside the untouched IJobAttachmentStorageService. No Redis is used (rejected — see Caching decision). Portal now consumes the published snapshot via ContentProvider + SnapshotImage (Phase 4); home.hero/amc.banner/about.hero are backend-driven, other hardcoded images can be migrated incrementally with the same <SnapshotImage slotKey=...> pattern (add a tblScreenImageSlot row + use the component). [DRIFT FIXED 2026-06-10: brain previously said storage was "filesystem-backed… no S3". Reality: S3ObjectStorageService + S3StorageOptions already existed (AWSSDK.S3 referenced) but the DI hardcoded FileSystem and never registered IAmazonS3 — so S3/R2 was unreachable. Now InfrastructureServiceCollectionExtensions switches IObjectStorageService on ObjectStorage:Provider and builds an R2-aware IAmazonS3 (ServiceUrl + ForcePathStyle for R2, regional endpoint for AWS). Prod appsettings.json set Provider="S3" (secrets via env); dev stays FileSystem. Frontend: VITE_SNAPSHOT_BASE_URL added so the portal fetches the static snapshot directly from the R2 CDN (falls back to API origin when unset). Build 0/0.]
 
 IMPLEMENTATION ROADMAP (execute phase-wise; each phase passes Architecture + Security + QA gates before the next):
   Phase 0 — Foundations / Infra (DevOps-SRE + Backend + Security): [IMPLEMENTED 2026-06-09]
@@ -7662,8 +7746,64 @@ OPERATIONAL RUNBOOK (CMS Content & Theme Delivery):
   - Admin path: Admin app → "Web Portal" (/governance/cms-delivery) → edit Theme / upload Screen Images → "Publish Now". Rollback by version on the same screen.
   - Add a new backend-driven image: insert a tblScreenImageSlot row (PageKey, SlotKey, Breakpoint, prompt, dims) → admin uploads → publish → use <SnapshotImage slotKey="page.slot" fallbackSrc=… /> on the portal page.
   - Add a theme token: extend SnapshotKeys.Theme + the portal THEME_CSS_VAR_MAP mapping; seed a default.
-  - Prod deploy checklist: run SqlServer scripts (Docs/Database/SQL/20260609_Add_PublishedSnapshot_Table.sql, 20260609_Add_ScreenImageSlot_Table.sql) + seed (DB_Seed_20260609_CmsThemeAndImageSlots.sql); set ObjectStorage:RootPath to the Render disk mount + ObjectStorage:PublicBaseUrl to the served/CDN base; set Web VITE_API_BASE_URL.
+  - Prod deploy checklist: run SqlServer scripts (Docs/Database/SQL/20260609_Add_PublishedSnapshot_Table.sql, 20260609_Add_ScreenImageSlot_Table.sql) + seed (DB_Seed_20260609_CmsThemeAndImageSlots.sql); set Web VITE_API_BASE_URL.
+  - Storage = FileSystem (default): set ObjectStorage:RootPath to the Render disk mount + ObjectStorage:PublicBaseUrl to the served/CDN base.
+  - STORAGE ROOT MOVED OFF wwwroot [2026-06-10]: ObjectStorage:RootPath is now `App_Data/cms-storage` (was
+    `wwwroot`) in BOTH appsettings.json and appsettings.Development.json, and the physical `wwwroot` folder
+    was DELETED. Prod uses S3/R2 so this is moot there. For FileSystem (dev/self-hosted), Program.cs now
+    registers a second UseStaticFiles with a PhysicalFileProvider over the configured RootPath (guarded to
+    Provider=="FileSystem"; dir auto-created at startup) so uploaded objects + `/cms/snapshot-latest.json`
+    stay publicly fetchable from outside wwwroot. ALSO REQUIRED: Coolzo.Api.csproj sets
+    `<StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>` — without it, the dev StaticWebAssets loader
+    throws DirectoryNotFoundException at startup because the build manifest still references the deleted
+    wwwroot. Restart verified 2026-06-10: dotnet run (http profile, port 5217) → GET /health = 200 Healthy
+    (object-storage writable probe passes against App_Data/cms-storage). ACTION after pulling this: dev must re-Publish the CMS
+    snapshot once to repopulate App_Data/cms-storage (the old wwwroot baseline images + snapshot were
+    removed); until then the dev portal uses its API/localStorage fallback. If a deploy used wwwroot as the
+    FileSystem mount, point RootPath at the persistent disk path instead.
+  - Storage = Cloudflare R2 (ObjectStorage:Provider="S3"): set ObjectStorage:S3:ServiceUrl=https://<accountid>.r2.cloudflarestorage.com, :Region="auto", :ForcePathStyle=true, :BucketName=<bucket>, and supply :AccessKey / :SecretKey via environment (ObjectStorage__S3__AccessKey / __SecretKey) — never source control. Set ObjectStorage:PublicBaseUrl to the bucket's R2 public domain (e.g. https://cdn.coolzo.com or the r2.dev URL). Set Web VITE_SNAPSHOT_BASE_URL to that same public base so the portal reads the static snapshot from R2.
+  - ACTIVE PROD PROVIDER [2026-06-10]: Cloudflare R2 is the live prod storage. Bucket = coolzo-cms; ServiceUrl/BucketName/Region(auto)/ForcePathStyle(true) in appsettings.json; AccessKey/SecretKey via env (set as Windows user env vars on the dev machine; set on the prod host before deploy). PublicBaseUrl + Web VITE_SNAPSHOT_BASE_URL = the r2.dev public subdomain (public read enabled). Dev pinned to FileSystem. VERIFIED LIVE: signed PUT 200 → unauthenticated public GET 200 → DELETE 204 against coolzo-cms via the r2.dev public base. Remaining (operational): restart prod API in Production env (loads Provider=S3 + env secrets) → Admin Web Portal upload+Publish → confirm {PublicBaseUrl}/cms/snapshot-latest.json = 200.
   - Failure modes: bucket/CDN down → portal API fallback; missing slot image → bundled fallbackSrc (no broken image); no active snapshot → manifest 404, portal uses fallbacks + default theme.
+
+PUBLIC WEB SITE — COMPLETE IMAGE INVENTORY & UPLOAD STATUS (audited 2026-06-10):
+  Scope: Frontend/Web (React public site). Three image classes exist: (A) CMS-managed screen slots
+  rendered via <SnapshotImage>, (B) CMS banners from snapshot content.banners, (C) hardcoded external
+  images that are NOT admin-managed. "Missed upload" = a registered/used slot with no published image,
+  so the site silently shows its bundled fallbackSrc.
+
+  A. CMS-MANAGED SCREEN SLOTS (tblScreenImageSlot → snapshot images map)
+     Registered slots (seed DB_Seed_20260609 / 15_seed): home.hero (desktop/tablet/mobile),
+     about.hero, amc.banner, services.banner. Published snapshot v1 (snapshot-latest.json) images map
+     currently contains ONLY home.hero.
+     | Slot           | Portal usage (SnapshotImage)        | Published image? | Asset on disk                                   | Status            |
+     | home.hero      | Home.tsx:70                         | YES              | wwwroot/cms/images/home/hero-desktop-7b603b…png | ✅ Uploaded       |
+     | about.hero     | About.tsx:41 (fallback=Unsplash)    | NO               | —                                               | ❌ MISSED upload  |
+     | amc.banner     | AMC.tsx:139 (fallback=Unsplash)     | NO               | —                                               | ❌ MISSED upload  |
+     | services.banner| NOT rendered (Services = catalog,   | NO               | wwwroot/cms/images/services/banner-desktop-…jpeg| ⚠ ORPHANED:      |
+     |                | no hero — see Phase 4 note)         |                  | + banner-desktop-…png (2 files)                 | uploaded, unwired |
+
+  B. CMS BANNERS (snapshot content.banners[])
+     | Banner                     | imageUrl                          | File on disk? | Status                          |
+     | "Summer Service Slots Open"| /assets/banners/summer-service.jpg| NO            | ❌ BROKEN — asset does not exist |
+     Note: banner imageUrl path (/assets/banners/) is NOT under wwwroot/cms — no such file anywhere in
+     wwwroot. Banner renders broken/empty unless the asset is supplied or the path is corrected.
+
+  C. HARDCODED EXTERNAL IMAGES (not CMS-managed — informational; candidates for CMS migration)
+     - Home.tsx: hero fallback (Unsplash), Hyderabad coverage (Home.tsx:191), Service Experience
+       (Home.tsx:251), Modern Home (Home.tsx:290), reviewer avatars (picsum, Home.tsx:117),
+       brand logos Daikin + Mitsubishi (Wikipedia, Home.tsx:139-140).
+     - About.tsx:105: team member photos (person.img).
+     - Blog.tsx / BlogDetail.tsx: post imageUrl || FALLBACK_IMG (external).
+     - ServiceDetail.tsx:174: FALLBACK_IMG (external) — would be replaced by services.banner if wired.
+     - Reviews.tsx, portal/Feedback.tsx (techAvatarUrl), portal/Profile.tsx (photoUrl||avatar): avatars.
+
+  SUMMARY (admin action required):
+    - Missing uploads an admin must publish: 3 → about.hero, amc.banner (screen slots) + summer-service.jpg (banner).
+    - Orphaned uploads (in storage, not published/unwired): 2 → services.banner desktop jpeg+png.
+    - Fix paths: wire services.banner into a Services hero OR retire the slot; correct the banner imageUrl
+      to a real published asset (e.g. an uploaded screen slot or /cms/... object path).
+  Notes on Drift (content drift): snapshot banner references a non-existent /assets/banners/ asset;
+    services.banner has storage uploads with no snapshot entry and no portal consumer.
 
 END OF SECTION 9
 

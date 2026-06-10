@@ -14,6 +14,9 @@ public sealed class Service : AuditableEntity
 
     public string Summary { get; set; } = string.Empty;
 
+    /// <summary>Optional admin-managed service image (object-storage public URL). Null = use UI fallback.</summary>
+    public string? ImageUrl { get; set; }
+
     public int EstimatedDurationInMinutes { get; set; }
 
     public decimal BasePrice { get; set; }

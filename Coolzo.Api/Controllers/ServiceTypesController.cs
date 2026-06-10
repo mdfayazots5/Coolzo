@@ -71,7 +71,8 @@ public sealed class ServiceTypesController : ApiControllerBase
             service.ServiceCategory?.CategoryName ?? string.Empty,
             service.BasePrice,
             service.EstimatedDurationInMinutes,
-            ResolveIconKey(service.ServiceCategory?.CategoryName, service.ServiceName));
+            ResolveIconKey(service.ServiceCategory?.CategoryName, service.ServiceName),
+            service.ImageUrl ?? string.Empty);
     }
 
     private static ServiceTypeDetailResponse MapDetail(
@@ -86,6 +87,7 @@ public sealed class ServiceTypesController : ApiControllerBase
             service.BasePrice,
             service.EstimatedDurationInMinutes,
             ResolveIconKey(service.ServiceCategory?.CategoryName, service.ServiceName),
+            service.ImageUrl ?? string.Empty,
             Array.Empty<ServiceTypeSubTypeResponse>(),
             faqs);
     }

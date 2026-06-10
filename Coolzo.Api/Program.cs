@@ -4,6 +4,7 @@ using Coolzo.Api.Middleware;
 using Coolzo.Application.DependencyInjection;
 using Coolzo.Infrastructure.DependencyInjection;
 using Coolzo.Persistence.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
@@ -49,6 +50,27 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
+// FileSystem object storage (dev / self-hosted): serve uploaded CMS objects (images + snapshot) from the
+// configured RootPath so they remain publicly fetchable even though storage now lives outside wwwroot.
+// Prod uses S3/R2 (objects served from the bucket), so this is skipped there.
+var objectStorageProvider = builder.Configuration["ObjectStorage:Provider"];
+if (string.Equals(objectStorageProvider, "FileSystem", StringComparison.OrdinalIgnoreCase))
+{
+    var configuredStorageRoot = builder.Configuration["ObjectStorage:RootPath"];
+    if (!string.IsNullOrWhiteSpace(configuredStorageRoot))
+    {
+        var objectStorageRoot = Path.IsPathRooted(configuredStorageRoot)
+            ? configuredStorageRoot
+            : Path.Combine(app.Environment.ContentRootPath, configuredStorageRoot);
+        Directory.CreateDirectory(objectStorageRoot);
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(objectStorageRoot),
+        });
+    }
+}
+
 app.UseRouting();
 app.UseCors("FrontendPolicy");
 

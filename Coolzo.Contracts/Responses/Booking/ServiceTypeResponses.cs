@@ -9,7 +9,8 @@ public sealed record ServiceTypeListItemResponse(
     string Category,
     decimal BasePrice,
     int EstimatedDurationInMinutes,
-    string IconKey);
+    string IconKey,
+    string ImageUrl);
 
 public sealed record ServiceTypeDetailResponse(
     long Id,
@@ -19,6 +20,7 @@ public sealed record ServiceTypeDetailResponse(
     decimal BasePrice,
     int EstimatedDurationInMinutes,
     string IconKey,
+    string ImageUrl,
     IReadOnlyCollection<ServiceTypeSubTypeResponse> SubTypes,
     IReadOnlyCollection<CMSFaqResponse> Faqs);
 
