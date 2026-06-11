@@ -121,7 +121,7 @@ public sealed class UpsertScreenImageSlotCommandHandler
         await _adminActivityLogger.WriteAsync(
             "UpsertScreenImageSlot",
             nameof(ScreenImageSlot),
-            $"{pageKey}.{slotKey}.{breakpoint}",
+            entity.ScreenImageSlotId.ToString(),
             entity.AltText,
             cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);

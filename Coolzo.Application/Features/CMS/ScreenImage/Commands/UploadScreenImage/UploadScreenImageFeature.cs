@@ -100,7 +100,7 @@ public sealed class UploadScreenImageCommandHandler
         await _adminActivityLogger.WriteAsync(
             "UploadScreenImage",
             nameof(Coolzo.Domain.Entities.ScreenImageSlot),
-            $"{slot.PageKey}.{slot.SlotKey}.{slot.Breakpoint}",
+            slot.ScreenImageSlotId.ToString(),
             stored.PublicUrl,
             cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
