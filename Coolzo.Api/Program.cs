@@ -23,6 +23,7 @@ builder.Services.AddCors(options =>
             .WithOrigins(
                 "https://coolzo.in",
                 "https://www.coolzo.in",
+                "https://admin.coolzo.in",
                 "http://127.0.0.1:4200",
                 "http://localhost:4200",
                 "http://127.0.0.1:3000",
