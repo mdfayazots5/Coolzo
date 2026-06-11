@@ -15,6 +15,7 @@ using Coolzo.Application.Features.CMS.Snapshot.Commands.PublishContentSnapshot;
 using Coolzo.Application.Features.CMS.Snapshot.Commands.RollbackContentSnapshot;
 using Coolzo.Application.Features.CMS.Snapshot.Queries.GetContentSnapshot;
 using Coolzo.Application.Features.CMS.Snapshot.Queries.GetSnapshotManifest;
+using Coolzo.Application.Features.CMS.Asset.Commands.UploadCmsAsset;
 using Coolzo.Application.Features.CMS.ScreenImage.Commands.UploadScreenImage;
 using Coolzo.Application.Features.CMS.ScreenImage.Commands.UpsertScreenImageSlot;
 using Coolzo.Application.Features.CMS.ScreenImage.Queries.GetScreenImageSlotList;
@@ -399,5 +400,22 @@ public sealed class CMSController : ApiControllerBase
             cancellationToken);
 
         return Success(response, "Screen image uploaded successfully.");
+    }
+
+    [Authorize(Policy = PermissionNames.CmsManage)]
+    [HttpPost("admin/assets/upload")]
+    public async Task<ActionResult<ApiResponse<CmsAssetUploadResponse>>> UploadAssetAsync(
+        [FromBody] CmsAssetUploadRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new UploadCmsAssetCommand(
+                request.FileName,
+                request.ContentType,
+                request.Base64Content,
+                request.AssetKey),
+            cancellationToken);
+
+        return Success(response, "Asset uploaded successfully.");
     }
 }

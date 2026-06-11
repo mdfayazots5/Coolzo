@@ -15,3 +15,9 @@ public sealed record ScreenImageUploadRequest(
     string ContentType,
     string Base64Content,
     string? AltText);
+
+public sealed record CmsAssetUploadRequest(
+    string FileName,
+    string ContentType,
+    string Base64Content,
+    string? AssetKey);
