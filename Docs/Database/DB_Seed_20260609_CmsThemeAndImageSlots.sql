@@ -48,7 +48,9 @@ FROM (VALUES
     (N'amc', N'banner', N'desktop', 1600, 500, N'Coolzo AMC banner',
      N'Reassuring wide banner conveying annual maintenance care for home cooling, subtle navy and gold tones, photorealistic, no text, 16:5.'),
     (N'about', N'hero', N'desktop', 1600, 600, N'Coolzo about hero',
-     N'Warm, trustworthy expert-team feel for an AC service company, a subtle modern service van and clean workshop, navy and gold palette, photorealistic, no text, 8:3.')
+     N'Warm, trustworthy expert-team feel for an AC service company, a subtle modern service van and clean workshop, navy and gold palette, photorealistic, no text, 8:3.'),
+    (N'home', N'coverage', N'desktop', 1200, 900, N'Hyderabad service coverage',
+     N'Trustworthy image of an AC service technician with a branded service van in a Hyderabad residential neighbourhood, clear daylight, navy and gold palette, photorealistic, no text, no logos, 4:3.')
 ) AS v(PageKey, SlotKey, Breakpoint, RecommendedWidth, RecommendedHeight, AltText, SuggestedAIPrompt)
 WHERE NOT EXISTS (
     SELECT 1 FROM dbo.tblScreenImageSlot t

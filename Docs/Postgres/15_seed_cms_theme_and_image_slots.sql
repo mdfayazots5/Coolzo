@@ -41,7 +41,9 @@ FROM (VALUES
     ('amc', 'banner', 'desktop', 1600, 500, 'Coolzo AMC banner',
      'Reassuring wide banner conveying annual maintenance care for home cooling, subtle navy and gold tones, photorealistic, no text, 16:5.'),
     ('about', 'hero', 'desktop', 1600, 600, 'Coolzo about hero',
-     'Warm, trustworthy expert-team feel for an AC service company, a subtle modern service van and clean workshop, navy and gold palette, photorealistic, no text, 8:3.')
+     'Warm, trustworthy expert-team feel for an AC service company, a subtle modern service van and clean workshop, navy and gold palette, photorealistic, no text, 8:3.'),
+    ('home', 'coverage', 'desktop', 1200, 900, 'Hyderabad service coverage',
+     'Trustworthy image of an AC service technician with a branded service van in a Hyderabad residential neighbourhood, clear daylight, navy and gold palette, photorealistic, no text, no logos, 4:3.')
 ) AS v("PageKey", "SlotKey", "Breakpoint", "RecommendedWidth", "RecommendedHeight", "AltText", "SuggestedAIPrompt")
 WHERE NOT EXISTS (
     SELECT 1 FROM public."tblScreenImageSlot" t

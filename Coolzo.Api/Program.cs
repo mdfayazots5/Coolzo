@@ -49,6 +49,13 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
 app.UseHttpsRedirection();
+
+app.UseRouting();
+// CORS must run BEFORE the static-file middleware: static files short-circuit the pipeline, so
+// without this ordering the cross-origin Web portal fetch of /cms/snapshot-latest.json (and other
+// CMS objects) returns 200 but carries no Access-Control-Allow-Origin header and the browser blocks it.
+app.UseCors("FrontendPolicy");
+
 app.UseStaticFiles();
 
 // FileSystem object storage (dev / self-hosted): serve uploaded CMS objects (images + snapshot) from the
@@ -70,9 +77,6 @@ if (string.Equals(objectStorageProvider, "FileSystem", StringComparison.OrdinalI
         });
     }
 }
-
-app.UseRouting();
-app.UseCors("FrontendPolicy");
 
 app.UseAuthentication();
 app.UseAuthorization();
