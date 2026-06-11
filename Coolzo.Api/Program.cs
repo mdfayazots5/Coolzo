@@ -3,14 +3,19 @@ using Coolzo.Api.HealthChecks;
 using Coolzo.Api.Middleware;
 using Coolzo.Application.DependencyInjection;
 using Coolzo.Infrastructure.DependencyInjection;
+using Coolzo.Infrastructure.Storage;
 using Coolzo.Persistence.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddPresentation();
+
+// CMS object storage runs exclusively on Cloudflare R2. Render's filesystem is ephemeral, so writing
+// uploaded images / published snapshots to disk loses them on the next redeploy. Fail fast at startup
+// if the R2 settings are incomplete instead of silently accepting an unusable configuration.
+ObjectStorageConfigurationGuard.Validate(builder.Configuration);
 
 builder.Services.AddHealthChecks()
     .AddCheck<ObjectStorageHealthCheck>("object-storage");
@@ -59,25 +64,8 @@ app.UseCors("FrontendPolicy");
 
 app.UseStaticFiles();
 
-// FileSystem object storage (dev / self-hosted): serve uploaded CMS objects (images + snapshot) from the
-// configured RootPath so they remain publicly fetchable even though storage now lives outside wwwroot.
-// Prod uses S3/R2 (objects served from the bucket), so this is skipped there.
-var objectStorageProvider = builder.Configuration["ObjectStorage:Provider"];
-if (string.Equals(objectStorageProvider, "FileSystem", StringComparison.OrdinalIgnoreCase))
-{
-    var configuredStorageRoot = builder.Configuration["ObjectStorage:RootPath"];
-    if (!string.IsNullOrWhiteSpace(configuredStorageRoot))
-    {
-        var objectStorageRoot = Path.IsPathRooted(configuredStorageRoot)
-            ? configuredStorageRoot
-            : Path.Combine(app.Environment.ContentRootPath, configuredStorageRoot);
-        Directory.CreateDirectory(objectStorageRoot);
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = new PhysicalFileProvider(objectStorageRoot),
-        });
-    }
-}
+// CMS objects (images + snapshot) are served directly from the Cloudflare R2 bucket's public URL,
+// so no local static-file mapping for object storage is required.
 
 app.UseAuthentication();
 app.UseAuthorization();

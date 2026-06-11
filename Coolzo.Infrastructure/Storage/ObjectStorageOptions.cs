@@ -4,34 +4,35 @@ public sealed class ObjectStorageOptions
 {
     public const string SectionName = "ObjectStorage";
 
-    public const string FileSystemProvider = "FileSystem";
-    public const string S3Provider = "S3";
-
-    /// <summary>Active storage provider: "FileSystem" (default) or "S3" (S3-compatible bucket).</summary>
-    public string Provider { get; set; } = FileSystemProvider;
-
     /// <summary>
-    /// FileSystem root. Relative paths resolve under the application content root (e.g. "wwwroot");
-    /// an absolute path targets a mounted disk. Ignored when Provider = "S3".
-    /// </summary>
-    public string RootPath { get; set; } = "wwwroot";
-
-    /// <summary>
-    /// Public URL prefix objects are served from. When empty, a server-relative URL ("/{key}") is
-    /// returned. For S3/CDN set this to the bucket's public/CDN base URL.
+    /// Public URL prefix objects are served from — the R2 bucket's public/CDN base URL. Combined with
+    /// the object key to form the absolute URL stored on each image/snapshot record.
     /// </summary>
     public string PublicBaseUrl { get; set; } = string.Empty;
 
-    /// <summary>S3-compatible bucket settings. Used only when Provider = "S3".</summary>
+    /// <summary>
+    /// PRIVATE R2 bucket for job/technician media (customer site photos — PII-grade). It is NOT public:
+    /// objects are streamed back through the API proxy, never via a public URL. Uses the same account
+    /// endpoint as <see cref="S3"/> but its OWN least-privilege token (JobMediaAccessKey/JobMediaSecretKey).
+    /// </summary>
+    public string JobMediaBucketName { get; set; } = string.Empty;
+
+    /// <summary>Access key for the private job-media R2 token. Secret — supply via env / user-secrets.</summary>
+    public string JobMediaAccessKey { get; set; } = string.Empty;
+
+    /// <summary>Secret key for the private job-media R2 token. Secret — supply via env / user-secrets.</summary>
+    public string JobMediaSecretKey { get; set; } = string.Empty;
+
+    /// <summary>Cloudflare R2 (S3-compatible) bucket settings.</summary>
     public S3StorageOptions S3 { get; set; } = new();
 }
 
 public sealed class S3StorageOptions
 {
-    /// <summary>Custom endpoint for S3-compatible providers (e.g. Cloudflare R2, Backblaze). Leave empty for AWS S3.</summary>
+    /// <summary>Account endpoint for the S3-compatible provider, e.g. https://&lt;account&gt;.r2.cloudflarestorage.com.</summary>
     public string ServiceUrl { get; set; } = string.Empty;
 
-    public string Region { get; set; } = "us-east-1";
+    public string Region { get; set; } = "auto";
 
     public string BucketName { get; set; } = string.Empty;
 
@@ -41,6 +42,6 @@ public sealed class S3StorageOptions
     /// <summary>Secret — supply via environment variable / user-secrets, never source control.</summary>
     public string SecretKey { get; set; } = string.Empty;
 
-    /// <summary>Required true for most S3-compatible providers (R2, MinIO); false for native AWS S3.</summary>
+    /// <summary>Required true for R2 (and most S3-compatible providers); false only for native AWS S3.</summary>
     public bool ForcePathStyle { get; set; } = true;
 }

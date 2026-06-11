@@ -41,21 +41,24 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ISupportTicketNumberGenerator, SupportTicketNumberGenerator>();
         services.AddSingleton<IGapPhaseAReferenceGenerator, GapPhaseAReferenceGenerator>();
         services.AddSingleton<IInstallationLifecycleReferenceGenerator, InstallationLifecycleReferenceGenerator>();
-        services.AddScoped<IJobAttachmentStorageService, LocalJobAttachmentStorageService>();
-
+        // CMS object storage is Cloudflare R2 (S3-compatible) only. The filesystem provider was removed
+        // because Render's disk is ephemeral and silently loses uploaded images and published snapshots
+        // on redeploy. ObjectStorageConfigurationGuard validates the R2 settings at startup.
         var objectStorageSection = configuration.GetSection(ObjectStorageOptions.SectionName);
         services.Configure<ObjectStorageOptions>(objectStorageSection);
         var objectStorageOptions = objectStorageSection.Get<ObjectStorageOptions>() ?? new ObjectStorageOptions();
 
-        if (string.Equals(objectStorageOptions.Provider, ObjectStorageOptions.S3Provider, StringComparison.OrdinalIgnoreCase))
-        {
-            services.AddSingleton<IAmazonS3>(_ => CreateS3Client(objectStorageOptions.S3));
-            services.AddScoped<IObjectStorageService, S3ObjectStorageService>();
-        }
-        else
-        {
-            services.AddScoped<IObjectStorageService, FileSystemObjectStorageService>();
-        }
+        // CMS client → public coolzo-cms bucket (its own R2 token).
+        services.AddSingleton<IAmazonS3>(_ => CreateS3Client(
+            objectStorageOptions.S3, objectStorageOptions.S3.AccessKey, objectStorageOptions.S3.SecretKey));
+        services.AddScoped<IObjectStorageService, S3ObjectStorageService>();
+
+        // Job/technician media (PII-grade site photos) lives in a SEPARATE PRIVATE bucket with its own
+        // least-privilege R2 token — never on ephemeral disk, never public, never sharing the CMS token.
+        // Same account endpoint (ServiceUrl/Region/ForcePathStyle), distinct credentials.
+        services.AddSingleton(_ => new JobMediaStorageClient(CreateS3Client(
+            objectStorageOptions.S3, objectStorageOptions.JobMediaAccessKey, objectStorageOptions.JobMediaSecretKey)));
+        services.AddScoped<IJobAttachmentStorageService, R2JobAttachmentStorageService>();
 
         services.AddScoped(typeof(IAppLogger<>), typeof(AppLogger<>));
 
@@ -91,29 +94,31 @@ public static class InfrastructureServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Builds an S3 client for an S3-compatible vendor. For Cloudflare R2 (and MinIO/Backblaze) set
-    /// S3.ServiceUrl to the account endpoint and keep ForcePathStyle = true; for native AWS S3 leave
-    /// ServiceUrl empty so the SDK resolves the regional endpoint. Credentials come from configuration
-    /// / environment (ObjectStorage:S3:AccessKey, :SecretKey) — never hardcoded.
+    /// Builds an S3 client for an S3-compatible vendor using the supplied credentials. The endpoint
+    /// (ServiceUrl/Region/ForcePathStyle) comes from <paramref name="endpointOptions"/>; the access/secret
+    /// keys are passed explicitly so the CMS and private job-media buckets can use distinct least-privilege
+    /// R2 tokens against the same account endpoint. Credentials come from configuration / environment —
+    /// never hardcoded. For Cloudflare R2 keep ForcePathStyle = true; for native AWS S3 leave ServiceUrl
+    /// empty so the SDK resolves the regional endpoint.
     /// </summary>
-    private static IAmazonS3 CreateS3Client(S3StorageOptions s3Options)
+    private static IAmazonS3 CreateS3Client(S3StorageOptions endpointOptions, string accessKey, string secretKey)
     {
         var config = new AmazonS3Config
         {
-            ForcePathStyle = s3Options.ForcePathStyle,
-            AuthenticationRegion = s3Options.Region
+            ForcePathStyle = endpointOptions.ForcePathStyle,
+            AuthenticationRegion = endpointOptions.Region
         };
 
-        if (!string.IsNullOrWhiteSpace(s3Options.ServiceUrl))
+        if (!string.IsNullOrWhiteSpace(endpointOptions.ServiceUrl))
         {
-            config.ServiceURL = s3Options.ServiceUrl;
+            config.ServiceURL = endpointOptions.ServiceUrl;
         }
         else
         {
-            config.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(s3Options.Region);
+            config.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(endpointOptions.Region);
         }
 
-        var credentials = new BasicAWSCredentials(s3Options.AccessKey, s3Options.SecretKey);
+        var credentials = new BasicAWSCredentials(accessKey, secretKey);
         return new AmazonS3Client(credentials, config);
     }
 }

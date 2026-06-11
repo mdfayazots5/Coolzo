@@ -1,3 +1,6 @@
+using Coolzo.Contracts.Responses.Amc;
+using Coolzo.Contracts.Responses.Booking;
+
 namespace Coolzo.Contracts.Responses.CMS;
 
 /// <summary>
@@ -20,12 +23,19 @@ public sealed record ContentSnapshotBody(
     SnapshotContentDto Content,
     IReadOnlyDictionary<string, SnapshotImageDto> Images);
 
+/// <summary>
+/// Public catalog masters bundled into the snapshot so the portal binds them from one static document
+/// instead of calling each booking-lookup endpoint. Shapes reuse the existing public lookup/AMC records
+/// (same contracts the portal already integrates) — all AllowAnonymous, public-display data, no PII.
+/// Dynamic/parameterized lookups (zones-by-pincode, slots) and all authenticated data stay live APIs.
+/// </summary>
 public sealed record SnapshotMastersDto(
-    IReadOnlyCollection<SnapshotBrandDto> Brands);
-
-public sealed record SnapshotBrandDto(
-    string Code,
-    string Name);
+    IReadOnlyCollection<ServiceCategoryLookupResponse> ServiceCategories,
+    IReadOnlyCollection<ServiceLookupResponse> Services,
+    IReadOnlyCollection<AcTypeLookupResponse> AcTypes,
+    IReadOnlyCollection<TonnageLookupResponse> Tonnages,
+    IReadOnlyCollection<BrandLookupResponse> Brands,
+    IReadOnlyCollection<AmcPlanResponse> AmcPlans);
 
 public sealed record SnapshotContentDto(
     IReadOnlyCollection<SnapshotBlockDto> Blocks,
