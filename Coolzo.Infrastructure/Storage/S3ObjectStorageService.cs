@@ -38,7 +38,11 @@ public sealed class S3ObjectStorageService : IObjectStorageService
             Key = normalizedKey,
             InputStream = stream,
             ContentType = contentType,
-            AutoCloseStream = false
+            AutoCloseStream = false,
+            // Cloudflare R2 does not implement chunked streaming payload signing
+            // (STREAMING-AWS4-HMAC-SHA256-PAYLOAD). Send the body as UNSIGNED-PAYLOAD over HTTPS
+            // instead so R2 accepts the upload.
+            DisablePayloadSigning = true
         };
 
         await _s3Client.PutObjectAsync(request, cancellationToken);

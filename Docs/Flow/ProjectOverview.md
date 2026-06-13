@@ -8084,6 +8084,21 @@ OPERATIONAL RUNBOOK (CMS Content & Theme Delivery):
   - FILESYSTEM PROVIDER REMOVED [2026-06-11]: FileSystemObjectStorageService deleted; ObjectStorageOptions.Provider/RootPath + the FileSystem provider constants removed; DI registers S3ObjectStorageService unconditionally; Program.cs dropped the PhysicalFileProvider UseStaticFiles block for object storage; appsettings.json lost the Provider/RootPath keys and appsettings.Development.json's ObjectStorage block was removed so dev inherits the R2 config from the base file (dev devs supply AccessKey/SecretKey via user-secrets/env; dev currently shares the coolzo-cms bucket — a dedicated dev bucket is a future refinement). Build 0/0 (Infrastructure + Api compiled isolated; full-solution build blocked only by the running IIS Express/VS lock). ACTION after pulling this: every environment, including local dev, MUST have the R2 settings + AccessKey/SecretKey or the API will not start.
   - ACTIVE PROD PROVIDER: Cloudflare R2 (bucket coolzo-cms). ServiceUrl/BucketName/Region(auto)/ForcePathStyle(true)/PublicBaseUrl in appsettings.json; AccessKey/SecretKey via env on Render (ObjectStorage__S3__AccessKey / __SecretKey). DEPLOY GATE: set the two R2 secret env vars on Render BEFORE deploying the guard, otherwise the API refuses to boot. Verify post-deploy: GET /health object-storage=Healthy + a CMS image upload returns a https://<PublicBaseUrl>/... URL.
   - Failure modes: bucket/CDN down → portal API fallback; missing slot image → bundled fallbackSrc (no broken image); no active snapshot → manifest 404, portal uses fallbacks + default theme.
+  - Notes on Drift [2026-06-14] — R2 UPLOAD CHECKSUM-TRAILER drift. Image-slot/asset/job-media uploads
+    failed with code "unexpected_error" wrapping Amazon.S3.AmazonS3Exception
+    "STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER not implemented" on PutObjectAsync. Root cause: AWSSDK.S3
+    3.7.414.3 enables default flexible checksums (CRC32) which upload the body as aws-chunked with a
+    SigV4 payload trailer; Cloudflare R2 does not implement that trailer and rejects the PUT. NOT a
+    credentials/config issue — SigV4 ListObjectsV2 against both buckets (coolzo-cms, coolzo-job-media)
+    returned HTTP 200, and R2 only emits this error AFTER accepting the signature; GET/List works, only
+    PUT carries the trailer. FIX (two parts, both required):
+    (1) CreateS3Client (InfrastructureServiceCollectionExtensions.cs) sets
+        AmazonS3Config.RequestChecksumCalculation = WHEN_REQUIRED + ResponseChecksumValidation =
+        WHEN_REQUIRED on both the CMS and job-media R2 clients → drops the "-TRAILER" checksum trailer.
+    (2) After (1) the SDK still used chunked STREAMING-AWS4-HMAC-SHA256-PAYLOAD signing (R2 also rejects
+        it). So every PutObjectRequest (S3ObjectStorageService + R2JobAttachmentStorageService) now sets
+        DisablePayloadSigning = true → body sent as UNSIGNED-PAYLOAD over HTTPS, which R2 accepts.
+    Watch this if AWSSDK.S3 is upgraded — re-verify R2 still accepts uploads.
 
 PUBLIC WEB SITE — COMPLETE IMAGE INVENTORY & UPLOAD STATUS (audited 2026-06-10):
   Scope: Frontend/Web (React public site). Three image classes exist: (A) CMS-managed screen slots
@@ -8124,6 +8139,52 @@ PUBLIC WEB SITE — COMPLETE IMAGE INVENTORY & UPLOAD STATUS (audited 2026-06-10
       to a real published asset (e.g. an uploaded screen slot or /cms/... object path).
   Notes on Drift (content drift): snapshot banner references a non-existent /assets/banners/ asset;
     services.banner has storage uploads with no snapshot entry and no portal consumer.
+
+LIVE STATE RE-VERIFICATION (2026-06-14) — supersedes the 2026-06-10 assumptions above:
+  Verified against the running API (localhost:44394) + the R2 public bucket. The 2026-06-10 audit
+  assumed a published snapshot (v1, home.hero present) existed; IT DOES NOT. Actual state:
+    - R2 bucket coolzo-cms is EMPTY (SigV4 ListObjectsV2 → KeyCount=0). No images, no snapshot artifact.
+    - GET /api/cms/snapshot/manifest → 200, version=3 (DB row, published 2026-06-11). BUT
+      GET /api/cms/snapshot/3 → 404 "Snapshot artifact for version 3 is missing from storage."
+    - Static GET {SNAPSHOT_BASE_URL}/cms/snapshot-latest.json → 404 (bucket empty).
+    - NET EFFECT: Frontend/Web fetchSnapshot() returns NULL (static 404 → API fallback 404 on missing
+      artifact). ContentContext snapshot = null, so EVERY snapshot-driven surface shows bundled
+      defaults: default theme, getBlock()=null → hardcoded fallback copy, SnapshotImage → fallbackSrc.
+  ROOT CAUSE: the R2 streaming-payload bug (fixed 2026-06-14, see Notes on Drift above) made PublishContentSnapshot's
+    PutObjectAsync throw, so no snapshot artifact (nor any image) ever reached R2. The v3 DB row survived
+    from an earlier FileSystem-era publish whose artifact was lost on Render redeploy (ephemeral disk).
+  WHAT IS ACTUALLY WORKING (snapshot-independent, live API): services & categories
+    (/api/booking-lookups/services = 11, /service-categories = 5, /api/service-types = 11) → Services
+    pages render real data. DB content that EXISTS and is ready to publish: 1 banner, 2 FAQs.
+  BANNER WIRING [RESOLVED 2026-06-14]: previously CMSService.getBanners() was defined but called by NO
+    page and snapshot.content.banners was typed unknown[] / consumed nowhere, so published banners
+    rendered nowhere. NOW WIRED via the snapshot (same publish/versioned model as theme/blocks/images):
+      - snapshotService.ts: added SnapshotBanner type; content.banners typed SnapshotBanner[]
+        (bannerTitle, bannerSubtitle, imageUrl, redirectUrl, displayArea, sortOrder — mirrors backend
+        SnapshotBannerDto).
+      - ContentContext: new getBanners(area?) — filters by displayArea, sorts by sortOrder, resolves
+        imageUrl via resolveAssetUrl. Empty array when none published.
+      - Home.tsx: PromoBanner component + a banners section between the trust strip and Services.
+        Brand-navy gradient is the base, so a missing/404 imageUrl degrades to a styled banner (never a
+        broken image); renders nothing when no Home banners are published (graceful empty).
+      - Removed dead code: CMSService.getHomeContent/getBanners + CMSHomeResponse/CMSBannerResponse
+        (stale shapes — they used title/subtitle/linkUrl, but the real API/snapshot use
+        bannerTitle/bannerSubtitle/redirectUrl/displayArea). Web tsc 0 errors.
+    Banners are snapshot-sourced, so they appear once a snapshot is (re)published — same as other CMS
+    content. The seeded banner's imageUrl (/assets/banners/summer-service.jpg) still points at a
+    non-existent asset; with the gradient-base design it shows as a styled gradient banner until an
+    admin sets a real published image — no broken image.
+  STABILIZATION STEPS (to make CMS content live), in order:
+    1. [DONE 2026-06-14] R2 PutObject fix deployed; API restarted; uploads verified working.
+    2. [ADMIN ACTION] Upload screen-slot images via /governance/cms-delivery: home.hero (desktop/tablet/
+       mobile), about.hero, amc.banner, services.banner.
+    3. [ADMIN ACTION] Click "Publish Now" → writes snapshot-{4}.json + snapshot-latest.json to R2
+       (PutObject now succeeds) → portal picks up theme + blocks + images on next load.
+    4. [DONE 2026-06-14] Banners wired into Home from the snapshot (see BANNER WIRING above). Admin
+       should set a real published image on the seeded banner; until then it shows a styled gradient
+       banner (no broken image).
+    5. Re-verify: GET /api/cms/snapshot/{4} → 200; {SNAPSHOT_BASE_URL}/cms/snapshot-latest.json → 200;
+       site shows CMS theme/images/copy. Definition of stable per Web_Responsive_Standard device matrix.
 
 END OF SECTION 9
 
@@ -8473,8 +8534,22 @@ All endpoints AllowAnonymous unless auth role noted. All routes use /api/... dir
   Business Rules:
     1. Returns full identity + flat permission set for JWT subject
     2. AdminMobile uses this to hydrate RBACProvider and session store
+    3. Admin web (Frontend/Admin) startup STARTUP GATE — auth-store `initialize()`
+       now validates the persisted token via GET /api/auth/me (skipAuthRefresh)
+       BEFORE granting AuthStatus.AUTHENTICATED. On 401 it does a one-shot
+       /api/auth/refresh-token; if that also fails it clears storage and sets
+       UNAUTHENTICATED so the router lands on /login.
   Failure Cases:
     - Expired/invalid token → 401
+  Notes on Drift:
+    - 2026-06-14 — Stale-session drift fixed. Previously auth-store `initialize()`
+      set AUTHENTICATED purely from localStorage (token+user present), so an
+      expired/revoked token mounted /dashboard on a dead session → blank/broken
+      screen instead of login. `initialize()` now validates against /api/auth/me
+      with refresh fallback. Files: Frontend/Admin/src/store/auth-store.ts,
+      Frontend/Admin/src/core/network/auth-repository.ts (getUserProfile gained
+      optional { skipAuthRefresh } to bypass the axios 401→/session-expired
+      interceptor during the startup check).
 
 ---
 

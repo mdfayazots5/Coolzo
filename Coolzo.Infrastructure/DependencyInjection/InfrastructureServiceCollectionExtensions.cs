@@ -106,7 +106,14 @@ public static class InfrastructureServiceCollectionExtensions
         var config = new AmazonS3Config
         {
             ForcePathStyle = endpointOptions.ForcePathStyle,
-            AuthenticationRegion = endpointOptions.Region
+            AuthenticationRegion = endpointOptions.Region,
+            // Cloudflare R2 does not implement the SDK's default flexible-checksum upload mode
+            // (STREAMING-AWS4-HMAC-SHA256-PAYLOAD-TRAILER), so PutObject fails with
+            // "not implemented" on AWSSDK.S3 3.7.40x+. Only compute/validate a checksum when an
+            // operation actually requires one — this drops the streaming trailer and lets R2
+            // accept uploads. Applies to both the CMS and private job-media R2 clients.
+            RequestChecksumCalculation = Amazon.Runtime.RequestChecksumCalculation.WHEN_REQUIRED,
+            ResponseChecksumValidation = Amazon.Runtime.ResponseChecksumValidation.WHEN_REQUIRED
         };
 
         if (!string.IsNullOrWhiteSpace(endpointOptions.ServiceUrl))
