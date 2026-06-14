@@ -12,6 +12,7 @@ internal static class ServiceCatalogMapper
             category.CategoryCode,
             category.CategoryName,
             category.Description,
+            category.ImageUrl,
             category.IsActive,
             category.SortOrder,
             serviceCount);

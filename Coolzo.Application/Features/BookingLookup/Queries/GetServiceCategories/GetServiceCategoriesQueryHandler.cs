@@ -21,7 +21,8 @@ public sealed class GetServiceCategoriesQueryHandler : IRequestHandler<GetServic
             .Select(category => new ServiceCategoryLookupResponse(
                 category.ServiceCategoryId,
                 category.CategoryName,
-                category.Description))
+                category.Description,
+                category.ImageUrl))
             .ToArray();
     }
 }

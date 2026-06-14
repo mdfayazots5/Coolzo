@@ -45,7 +45,7 @@ public sealed class ServiceCatalogAdminController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(
-            new CreateServiceCategoryCommand(request.CategoryName, request.CategoryCode, request.Description, request.IsActive, request.SortOrder),
+            new CreateServiceCategoryCommand(request.CategoryName, request.CategoryCode, request.Description, request.ImageUrl, request.IsActive, request.SortOrder),
             cancellationToken);
 
         return Success(response, "Service category created successfully.");
@@ -59,7 +59,7 @@ public sealed class ServiceCatalogAdminController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(
-            new UpdateServiceCategoryCommand(serviceCategoryId, request.CategoryName, request.CategoryCode, request.Description, request.IsActive, request.SortOrder),
+            new UpdateServiceCategoryCommand(serviceCategoryId, request.CategoryName, request.CategoryCode, request.Description, request.ImageUrl, request.IsActive, request.SortOrder),
             cancellationToken);
 
         return Success(response, "Service category updated successfully.");

@@ -6,6 +6,7 @@ public sealed record ServiceCategoryAdminResponse(
     string CategoryCode,
     string CategoryName,
     string Description,
+    string? ImageUrl,
     bool IsActive,
     int SortOrder,
     int ServiceCount);

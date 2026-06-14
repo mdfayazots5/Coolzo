@@ -1,3 +1,3 @@
 namespace Coolzo.Contracts.Responses.Booking;
 
-public sealed record ServiceCategoryLookupResponse(long ServiceCategoryId, string CategoryName, string Description);
+public sealed record ServiceCategoryLookupResponse(long ServiceCategoryId, string CategoryName, string Description, string? ImageUrl);

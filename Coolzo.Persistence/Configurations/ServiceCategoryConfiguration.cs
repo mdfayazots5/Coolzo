@@ -15,6 +15,7 @@ public sealed class ServiceCategoryConfiguration : IEntityTypeConfiguration<Serv
         builder.Property(entity => entity.CategoryCode).HasMaxLength(64).IsRequired();
         builder.Property(entity => entity.CategoryName).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.Description).HasMaxLength(256).IsRequired();
+        builder.Property(entity => entity.ImageUrl).HasMaxLength(512);
         builder.Property(entity => entity.IsActive).HasDefaultValue(true);
 
         builder.HasIndex(entity => entity.CategoryCode)

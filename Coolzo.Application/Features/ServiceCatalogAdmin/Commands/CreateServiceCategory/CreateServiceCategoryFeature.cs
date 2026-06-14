@@ -11,6 +11,7 @@ public sealed record CreateServiceCategoryCommand(
     string CategoryName,
     string? CategoryCode,
     string? Description,
+    string? ImageUrl,
     bool IsActive,
     int SortOrder) : IRequest<ServiceCategoryAdminResponse>;
 
@@ -21,6 +22,7 @@ public sealed class CreateServiceCategoryCommandValidator : AbstractValidator<Cr
         RuleFor(request => request.CategoryName).NotEmpty().MaximumLength(128);
         RuleFor(request => request.CategoryCode).MaximumLength(64);
         RuleFor(request => request.Description).MaximumLength(512);
+        RuleFor(request => request.ImageUrl).MaximumLength(512);
     }
 }
 
@@ -53,6 +55,7 @@ public sealed class CreateServiceCategoryCommandHandler
                 ? ServiceCatalogMapper.SlugCode(request.CategoryName)
                 : request.CategoryCode.Trim(),
             Description = request.Description?.Trim() ?? string.Empty,
+            ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim(),
             IsActive = request.IsActive,
             SortOrder = request.SortOrder,
             CreatedBy = _currentUserContext.UserName,

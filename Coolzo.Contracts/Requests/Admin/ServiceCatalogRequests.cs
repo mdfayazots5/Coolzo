@@ -5,6 +5,7 @@ public sealed record ServiceCategoryUpsertRequest(
     string CategoryName,
     string? CategoryCode,
     string? Description,
+    string? ImageUrl,
     bool IsActive,
     int SortOrder);
 

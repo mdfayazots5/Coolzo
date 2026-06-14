@@ -2938,6 +2938,7 @@ fallback shown until the block is published — never blank):
   - `contact.areas.title` + `contact.areas` (comma-separated area names) — Contact "Serving across…"
     block (was hardcoded). Whole block hides if `contact.areas` resolves empty.
 New **screen-image slot:** `reviews.banner` (Reviews.tsx hero, `<SnapshotImage>`; bundled fallbackSrc).
+  [Postgres slot row APPLIED to Supabase 2026-06-14 — desktop 1600×500, id 8, via Docs/Postgres/16_seed_reviews_banner_slot.sql; SqlServer seed Docs/Database/DB_Seed_20260614_ReviewsBannerSlot.sql pending prod. Publish a snapshot after uploading the image for it to reach the portal.]
 **theme.logoUrl now actually bound:** public `Navbar` + `PortalLayout` render the published logo image
 (via `ContentContext.logoUrl` = resolved `theme.logoUrl`), wordmark "Coolzo" only as fallback. Admin
 logo upload (`CmsDeliveryManager`) now routes raster logos through `ImageCropModal` (new `outputType`
@@ -2945,8 +2946,18 @@ prop → PNG to preserve transparency; SVG bypasses crop). Logo crop export = 48
 **Catalog filter deep-link:** `/services?cat=<id|nameSlug>` — `Services.tsx` resolves the param to a
 category (numeric→id, else name-contains) and pre-filters the list. Home "View details" links
 `/services?cat=<categoryId>`; Footer "Expertise" is data-driven (real top-4 categories, linked by id).
-Home category cards derive a representative image from their services' `imageUrl` (category lookup
-carries NO image field); Pricing rows show a per-service `imageUrl` thumbnail.
+Pricing rows show a per-service `imageUrl` thumbnail.
+**Category images (added 2026-06-14):** `tblServiceCategory` gained a nullable `ImageUrl` column
+(Postgres APPLIED to Supabase 2026-06-14 via Docs/Postgres/17_add_service_category_image.sql;
+SqlServer Docs/Database/DB_20260614_AddServiceCategoryImage.sql pending prod). Threaded through:
+entity + EF config (maxlen 512), `ServiceCategoryAdminResponse` + `ServiceCategoryUpsertRequest` +
+Create/Update `ServiceCategory` commands/handlers/validators + `ServiceCatalogAdminController`, and
+the public `ServiceCategoryLookupResponse` (+ GetServiceCategories handler) — so it flows into the
+snapshot masters automatically. Admin: `ServiceCatalogManager` category modal now has image
+upload+crop (16:9, folder "categories", via ImageCropModal) and a row thumbnail. Web Home catalog
+cards prefer `category.imageUrl`, falling back to a representative service image, then the icon.
+Also: the duplicate "Service Categories" heading was removed from `ServiceCatalogManager` (the page
+already shows the "Service Catalog" title).
 **Reviews submit (item 14):** public `/reviews` now has an auth-gated submit form → existing
 `POST /api/customer-reviews` (`[Authorize]`; Rating 1–5; BookingId optional — completion enforced only
 when a bookingId is supplied). On success the review is prepended to the list (shows as latest).
