@@ -2928,6 +2928,35 @@ snapshot (theme + content blocks + screen images), with IMemoryCache-backed API 
 | 13 | Blog Posts | cms/blog (public) | Blog.tsx, BlogDetail.tsx |
 | 14 | Promotional Offers | marketingService.ts | Home / offers surfaces (customer-marketing) |
 
+#### Website Rework 2026-06-14 — new CMS-bound keys & public-Web contracts (PARTIAL — code complete, visual verification pending per CLAUDE.md §5b)
+New admin-editable **content-block keys** (read via `getBlock(key)?.content`; each has a built-in
+fallback shown until the block is published — never blank):
+  - `social.instagram` / `social.twitter` / `social.facebook` — Footer social icons. **No fallback:**
+    an icon renders ONLY when its URL is published (absent ⇒ hidden).
+  - `legal.terms` / `legal.privacy` — full HTML body for `/terms` and `/privacy` (rendered via
+    `dangerouslySetInnerHTML`, admin-authored; falls back to the built-in static copy).
+  - `contact.areas.title` + `contact.areas` (comma-separated area names) — Contact "Serving across…"
+    block (was hardcoded). Whole block hides if `contact.areas` resolves empty.
+New **screen-image slot:** `reviews.banner` (Reviews.tsx hero, `<SnapshotImage>`; bundled fallbackSrc).
+**theme.logoUrl now actually bound:** public `Navbar` + `PortalLayout` render the published logo image
+(via `ContentContext.logoUrl` = resolved `theme.logoUrl`), wordmark "Coolzo" only as fallback. Admin
+logo upload (`CmsDeliveryManager`) now routes raster logos through `ImageCropModal` (new `outputType`
+prop → PNG to preserve transparency; SVG bypasses crop). Logo crop export = 480×160 (3:1).
+**Catalog filter deep-link:** `/services?cat=<id|nameSlug>` — `Services.tsx` resolves the param to a
+category (numeric→id, else name-contains) and pre-filters the list. Home "View details" links
+`/services?cat=<categoryId>`; Footer "Expertise" is data-driven (real top-4 categories, linked by id).
+Home category cards derive a representative image from their services' `imageUrl` (category lookup
+carries NO image field); Pricing rows show a per-service `imageUrl` thumbnail.
+**Reviews submit (item 14):** public `/reviews` now has an auth-gated submit form → existing
+`POST /api/customer-reviews` (`[Authorize]`; Rating 1–5; BookingId optional — completion enforced only
+when a bookingId is supplied). On success the review is prepended to the list (shows as latest).
+Anonymous visitors get a "Sign in to review" CTA. No new API/DB.
+**Browser title:** dynamic `Coolzo — <Section>` via `Frontend/Web/src/components/RouteTitle.tsx`
+(public + portal routes; home/unmapped ⇒ just "Coolzo"). Admin app title is separate (unchanged).
+**Snapshot 404 (item 4):** R2 file is correct; portal 404 = Render missing `VITE_SNAPSHOT_BASE_URL`
+(falls back to API origin which doesn't serve the static file) — infra fix, not code. See memory
+`snapshot-404-and-cms-keys`.
+
 ### PHYSICAL SCHEMA (confirmed 2026-06-10 from EF configs — Supabase Postgres, tbl-prefix, PascalCase quoted columns)
 Tables use the SQL-standard naming (tbl prefix) even on Postgres; columns are PascalCase (must be
 double-quoted in Postgres SQL). All business tables carry audit columns via ConfigureAuditColumns().
