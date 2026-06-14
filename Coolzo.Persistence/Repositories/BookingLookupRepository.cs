@@ -184,4 +184,68 @@ public sealed class BookingLookupRepository : IBookingLookupRepository
             .Include(entity => entity.Zone)
             .FirstOrDefaultAsync(entity => entity.SlotAvailabilityId == slotAvailabilityId && !entity.IsDeleted, cancellationToken);
     }
+
+    // ── Admin catalog management ───────────────────────────────────────────────────────────────
+    public async Task<IReadOnlyCollection<ServiceCategory>> ListServiceCategoriesAdminAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.ServiceCategories
+            .AsNoTracking()
+            .Where(entity => !entity.IsDeleted)
+            .OrderBy(entity => entity.SortOrder)
+            .ThenBy(entity => entity.CategoryName)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<Service>> ListServicesAdminAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.Services
+            .AsNoTracking()
+            .Include(entity => entity.PricingModel)
+            .Where(entity => !entity.IsDeleted)
+            .OrderBy(entity => entity.SortOrder)
+            .ThenBy(entity => entity.ServiceName)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyCollection<PricingModel>> ListPricingModelsAsync(CancellationToken cancellationToken)
+    {
+        return await _dbContext.PricingModels
+            .AsNoTracking()
+            .Where(entity => entity.IsActive && !entity.IsDeleted)
+            .OrderBy(entity => entity.PricingModelName)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    public Task<PricingModel?> GetPricingModelByIdAsync(long pricingModelId, CancellationToken cancellationToken)
+    {
+        return _dbContext.PricingModels
+            .FirstOrDefaultAsync(entity => entity.PricingModelId == pricingModelId && !entity.IsDeleted, cancellationToken);
+    }
+
+    public Task<ServiceCategory?> GetServiceCategoryForEditAsync(long serviceCategoryId, CancellationToken cancellationToken)
+    {
+        return _dbContext.ServiceCategories
+            .FirstOrDefaultAsync(entity => entity.ServiceCategoryId == serviceCategoryId && !entity.IsDeleted, cancellationToken);
+    }
+
+    public Task<Service?> GetServiceForEditAsync(long serviceId, CancellationToken cancellationToken)
+    {
+        return _dbContext.Services
+            .Include(entity => entity.PricingModel)
+            .FirstOrDefaultAsync(entity => entity.ServiceId == serviceId && !entity.IsDeleted, cancellationToken);
+    }
+
+    public Task<int> CountServicesInCategoryAsync(long serviceCategoryId, CancellationToken cancellationToken)
+    {
+        return _dbContext.Services
+            .CountAsync(entity => entity.ServiceCategoryId == serviceCategoryId && !entity.IsDeleted, cancellationToken);
+    }
+
+    public void AddServiceCategory(ServiceCategory category) => _dbContext.ServiceCategories.Add(category);
+
+    public void RemoveServiceCategory(ServiceCategory category) => _dbContext.ServiceCategories.Remove(category);
+
+    public void AddService(Service service) => _dbContext.Services.Add(service);
+
+    public void RemoveService(Service service) => _dbContext.Services.Remove(service);
 }

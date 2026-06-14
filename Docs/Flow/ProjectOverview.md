@@ -8174,6 +8174,161 @@ LIVE STATE RE-VERIFICATION (2026-06-14) — supersedes the 2026-06-10 assumption
     content. The seeded banner's imageUrl (/assets/banners/summer-service.jpg) still points at a
     non-existent asset; with the gradient-base design it shows as a styled gradient banner until an
     admin sets a real published image — no broken image.
+  BANNER FIELD-SHAPE DRIFT [fixed 2026-06-14, v4 verification]: SnapshotBannerDto serializes as
+    {title, subtitle, imageUrl, redirectUrl, displayArea, sortOrder} — NOT bannerTitle/bannerSubtitle
+    (that is the PUBLIC API CMSBannerResponse shape, a DIFFERENT contract). The first banner-wiring pass
+    used bannerTitle/bannerSubtitle, so the live v4 promo banner rendered with NO title (only the
+    "Learn more" link). Corrected SnapshotBanner + Home PromoBanner to title/subtitle. Lesson: the
+    snapshot DTOs (Coolzo.Contracts/Responses/CMS/ContentSnapshotResponse.cs) are the source of truth for
+    Web snapshot shapes, not the /api/cms/public/* DTOs.
+
+PUBLISH PIPELINE — END-TO-END VERIFIED [2026-06-14]: after the R2 PutObject fix, admin published v4.
+  Confirmed {SNAPSHOT_BASE_URL}/cms/snapshot-latest.json → HTTP 200 (was 404); snapshot now carries
+  13 theme tokens, 7 blocks, 1 banner, 2 faqs, 5 image slots. The R2 publish path works end to end.
+
+PUBLIC SITE v4 ISSUE AUDIT [2026-06-14] — after admin upload+publish:
+  CODE (fixed this session):
+    - Promo banner showed no title → banner field-shape drift (above). FIXED + built 0 errors.
+    - amc.banner slot was uploaded/published but rendered NOWHERE (orphaned). Now wired into the AMC
+      page hero (AMC.tsx SnapshotImage slotKey="amc.banner", 16:5, graceful fallback).
+    - Promo banner REDESIGN [2026-06-14, design pass]: the no-image state rendered as a flat half-empty
+      navy block and double-nested Container (Container inside Container → double inset). Redesigned the
+      Home PromoBanner: removed the nested Container (now px padding), added a decorative gold skew accent
+      so it looks intentional with no image, and promoted "Learn more" from a text link to a gold pill
+      button with a balanced left-text/right-CTA row. Image (when an admin sets a real one) sits behind a
+      left-weighted scrim. tsc + vite build 0 errors.
+  HOME IMAGE-BINDING REVIEW [2026-06-14]: every CMS image slot on Home IS bound — home.hero
+    (SnapshotImage) and home.coverage (SnapshotImage). Service cards use lucide icons, not images. No
+    hardcoded <img> on Home that should be CMS-managed. Only the promo banner image is unbound (broken
+    seeded imageUrl) — now visually handled by the redesign; admin sets a real image when desired.
+    home.coverage currently shows the Coolzo LOGO (admin upload) rather than a coverage photo — content
+    choice, re-upload if a photo is preferred.
+  CONTENT / ADMIN ACTION (data, not code — re-upload / edit in CMS):
+    - services.banner (home.* Services page, Services.tsx:72): uploaded image is a SCANNED MARKSHEET —
+      wrong asset, visible on the Services page. Re-upload a real AC banner.
+    - home.hero MOBILE variant = wrong placeholder image; TABLET variant = "CITY AIR" stock graphic.
+      SnapshotImage uses <picture> media queries, so phones/tablets get these. Re-upload correct
+      mobile (640×480) + tablet (1024×600) hero images.
+    - banner redirectUrl = "/booking" → 404 (the real route is "/book"; "/booking" does not exist).
+      Edit the banner's redirect to "/book" in the CMS.
+    - home.coverage = the Coolzo logo (a logo, not a coverage photo) — renders fine but off-brief;
+      optional re-upload of a technician/coverage photo.
+    - banner imageUrl = /assets/banners/summer-service.jpg (no such asset) → styled gradient fallback
+      shows (no broken image); set a real image on the banner when desired.
+  NON-ISSUE: Home "Four simple steps" shows all 4 in code; steps 03/04 use whileInView scroll
+    animation and only look faded in a full-page screenshot.
+
+PUBLIC SITE — CATALOG / STATS / COVERAGE CHANGES [2026-06-14, PM-led pass with role sign-off]:
+  Decisions (CEO/PM): catalog → live API; trust-stats → CMS-editable; service images → admin upload.
+  1. CATALOG NOW LIVE (Chief Architect): CatalogService.getServiceCategories + getServices now read the
+     live booking-lookup API directly (snapshot-masters branch removed for these two ONLY). Reason: the
+     published snapshot caches masters at publish time, so admin catalog edits did not appear until a
+     republish ("invalid/hardcoded" perception). The static snapshot still serves theme/images/content/
+     banners; ac-types/tonnages/brands remain snapshot-first (rarely change). This also makes the live
+     service ImageUrl available to the site and keeps the booking wizard consistent with the catalog.
+  2. SERVICE IMAGES (PM/content + Backend verified): backend is wired end to end —
+     GetServicesQueryHandler returns service.ImageUrl; admin sets it via SetServiceImageFeature
+     (Master Data → Service Images). No code change needed; images are simply not uploaded yet. With the
+     catalog now live (1), uploaded service images appear immediately (no republish). Services.tsx +
+     ServiceDetail.tsx already render imageUrl with graceful fallback.
+  3. TRUST-STRIP STATS = CMS BLOCKS (PM/UX): Home hero stats (rating/zones/technicians/response) now read
+     admin content blocks home.stat.rating | home.stat.zones | home.stat.technicians | home.stat.response
+     (block Title = figure, Text = caption), with the current literals as fallback. New keys registered in
+     Admin CmsDeliveryManager KNOWN_BLOCK_KEYS so they are creatable/editable in the CMS Content tab; the
+     snapshot builder already aggregates ALL CMS blocks, so once created+published they flow to the site.
+  4. COVERAGE CITIES LIVE (Frontend): Home "Serving across Hyderabad" zone list now comes from
+     CatalogService.getZones() (active zones, first 8), with the prior hardcoded list as fallback.
+  5. RESPONSIVE SERVICE CARDS (UX): Home service grid uses a count-aware column class
+     (serviceGridCols) so 5 cards render 3+2 on desktop instead of an orphaned 4+1; mobile stays 2-up.
+  6. /booking 404 (Frontend/QA): added a route alias /booking → <Navigate to="/book"> in App.tsx so the
+     already-published v4 banner (redirectUrl "/booking") never 404s; the banner data should still be
+     corrected to "/book" in the CMS. All changes: Web tsc + vite build 0 errors; Admin tsc 0 errors.
+  8. ADMIN SERVICE CATALOG — BOOKABLE SERVICES PANEL (PM/Frontend) [2026-06-14]: at
+     /settings/master/services (ServiceCatalogScreen) the 11 bookable services loaded from
+     /api/booking-lookups/services but were NOT displayed — they only fed the Subtypes "Parent Service"
+     dropdown, so the page looked like "service data not binding." No envelope/field bug; it was a
+     visibility gap. Added a read-only "Bookable Services" panel at the top (name, category, pricing
+     model, base price, image thumbnail). Added serviceCatalogRepository.getServiceCategories() to label
+     each service. INLINE IMAGE UPLOAD added per service (Upload/Replace/Remove) reusing the same flow as
+     ServiceImagesScreen (readFileAsBase64 → useMasterData.uploadMasterImage("services") → R2 →
+     serviceCatalogRepository.setServiceImage → tblService.ImageUrl); 5 MB / image-type guard; thumbnail
+     updates immediately. A "Manage images →" shortcut to /settings/master/service-images is also kept.
+     Also added a read-only "Service Categories" panel (name, description, # of services per category)
+     from /api/booking-lookups/service-categories. NOTE: category EDIT/CREATE/DELETE has NO backend yet
+     (ServiceCatalogAdminController only exposes PUT {id}/image; no service-categories master slug) — full
+     category management would need new Create/Update/Delete ServiceCategory commands + controller +
+     repository + SP. Service definitions remain in tblService (not editable here by design).
+     PAGE REDESIGN [2026-06-14, CEO-led]: the screen had become a vertical stack (Services panel +
+     Categories panel + 3-card section selector + editor) mixing read-only reference with editable
+     masters in two different interaction patterns. Re-architected into ONE top-level TAB navigation:
+     "Catalog" (read-only Bookable Services with image upload + Service Categories overview) | "Service
+     Subtypes" | "Equipment Brands" | "Equipment Models" (each = editor form + list). The "New …" action
+     and editor only render on the editable tabs. Separates reference/overview from master editing;
+     consistent single nav instead of a panel-stack + selector.
+     CATALOG CRUD BACKEND [2026-06-14, T3, CEO-approved] — NEW API GROUP on ServiceCatalogAdminController
+     (route base /api/admin/services, all [Authorize Policy=LookupManage]). Built to enable the planned
+     hierarchical Categories→Services accordion (add/edit at both levels). Writes use EF Core entity
+     mutation + IUnitOfWork.SaveChangesAsync (the codebase pattern — NOT stored procedures); NO DB schema
+     change (tblService/tblServiceCategory already have all fields). Endpoints:
+       GET    /api/admin/services/catalog                 — GetServiceCatalogAdmin: {categories[], services[], pricingModels[]} incl. INACTIVE (admin view)
+       POST   /api/admin/services/categories              — CreateServiceCategory
+       PUT    /api/admin/services/categories/{id}         — UpdateServiceCategory
+       DELETE /api/admin/services/categories/{id}         — DeleteServiceCategory (HARD delete; 409 if it still has services)
+       POST   /api/admin/services                         — CreateService (validates category + pricing model exist)
+       PUT    /api/admin/services/{id}                    — UpdateService
+       DELETE /api/admin/services/{id}                    — DeleteService (HARD delete; 409 caught if referenced by bookings)
+       PUT    /api/admin/services/{id}/image              — SetServiceImage (existing)
+     Delete semantics = HARD delete (per CEO decision) with referential guards (no orphaning). Service
+     create/edit = full fields (category, pricingModel, name, summary, basePrice, duration, code auto-from-name,
+     imageUrl, isActive, sortOrder). Files: Coolzo.Application/Features/ServiceCatalogAdmin/{Queries,Commands}/*,
+     ServiceCatalogMapper, Contracts/Requests/Admin/ServiceCatalogRequests, Contracts/Responses/Admin/
+     ServiceCatalogAdminResponse, IBookingLookupRepository (+impl) admin methods. Compiles 0 CS errors
+     (Application/Persistence/Api verified to temp output; full Api/bin build blocked only by running IIS lock).
+     PHASE 2 FRONTEND [DONE 2026-06-14]: new self-contained ServiceCatalogManager.tsx renders the Catalog
+     tab as a hierarchical accordion — Service Categories (Add/Edit/Delete) → expand → Services
+     (Add/Edit/Delete) with modal forms. Service modal has full fields incl. category + pricing-model
+     dropdowns and inline image upload (uploadMasterImage("services") → R2 → imageUrl saved with the
+     service). Reads GET /catalog; writes via the CRUD endpoints; reloads after each save. Delete uses
+     window.confirm + friendly 409 messages (category-with-services / booking-referenced). The old
+     read-only Bookable Services + Service Categories panels and their per-row image upload were removed
+     (superseded). serviceCatalogRepository gained getCatalog/create+update+deleteCategory/
+     create+update+deleteService. Admin tsc + build 0 errors.
+     DEAD-TABS REMOVAL [2026-06-14, PM analysis]: the Service Catalog screen also hosted 3 tabs —
+     Service Subtypes / Equipment Brands / Equipment Models (generic Phase-4 DynamicMasterRecord master
+     data via Phase4ConfigurationController, types ServiceSubType/EquipmentBrand/EquipmentModel). Audit
+     found ZERO consumers: no Web page, no Mobile screen, no booking/service/equipment backend flow, and
+     not populated into the CMS snapshot (booking AC brands use the separate tblBrand via
+     /booking-lookups/brands; customer equipment uses free-text brand/type). They were dead UI for
+     unconsumed data → REMOVED. ServiceCatalogScreen.tsx simplified to render only ServiceCatalogManager
+     (the categories→services accordion); the tab bar + all subtype/brand/model editor machinery deleted.
+     SystemConfigHomeScreen card description updated. NOTE (not done, optional): the backend
+     Phase4ConfigurationController master CRUD for those 3 slugs is now unreferenced by any UI and could be
+     retired separately. Admin tsc + build 0 errors.
+     IMAGE CROP-ON-UPLOAD [2026-06-14, PM/UX]: AI/stock images rarely match a slot's exact dimensions, so
+     a reusable crop step now precedes every admin image upload. New components/shared/ImageCropModal.tsx
+     = pan + zoom cropper LOCKED to the target aspect ratio; on Apply it draws the framed region to a
+     canvas at EXACTLY targetWidth×targetHeight (cover-fit, no letterboxing) and exports JPEG q0.92 →
+     base64 for the existing upload APIs. Wired into all three upload paths: (a) CMS image slots
+     (CmsDeliveryManager) — target = each slot's recommendedWidth×recommendedHeight per breakpoint
+     (e.g. home.hero desktop 1920×800, mobile 640×480, tablet 1024×600; banners 1600×500); (b) Service
+     Catalog service image (ServiceCatalogManager) and (c) Service Images screen — target 1280×720 (16:9,
+     matching the public Services/ServiceDetail render). File picked → crop modal → cropped image uploaded
+     to R2. Admin tsc + build 0 errors.
+     CROP MODAL RENDER FIX [2026-06-14]: the first ImageCropModal shipped on a green build but rendered
+     broken (card collapsed to text width; cropped image overflowed) — a process miss (declared stable on
+     compile, never visually rendered; see CLAUDE.md §5b). Hardened: card now uses an explicit pixel width
+     (560 / max 94vw) instead of w-full+max-w-xl flex sizing; frame bounded to ≤512px and min 1px; aspect
+     guarded against 0/missing dims. STATUS: code hardened + builds; the rendered result still needs a
+     visual confirmation in a browser (flagged UNVERIFIED, not auto-signed-off).
+     WEB: uploaded images appear
+     on the public site immediately (no republish) — Services.tsx + ServiceDetail.tsx render
+     service.imageUrl and the catalog reads the LIVE API (see change 1). Admin tsc + build 0 errors.
+  7. MOBILE TRUST-STRIP REDESIGN (UX/Frontend) [2026-06-14]: the Home hero trust strip used
+     flex-wrap+justify-center, so on phones the rating + 3 figures bunched and wrapped unevenly.
+     Rebuilt mobile-first: rating centered on top, then 3 EQUAL stat columns (grid-cols-3) under a hairline
+     divider; from sm it returns to the one-row rating-left / stats-right layout. Rest of Home already
+     reflows via Container/Section/Grid primitives + responsive Tailwind. (The faint figures at the very
+     top of the mobile hero are the WRONG home.hero MOBILE variant upload — content re-upload, not layout.)
   STABILIZATION STEPS (to make CMS content live), in order:
     1. [DONE 2026-06-14] R2 PutObject fix deployed; API restarted; uploads verified working.
     2. [ADMIN ACTION] Upload screen-slot images via /governance/cms-delivery: home.hero (desktop/tablet/

@@ -666,6 +666,11 @@ ProjectOverview reference: SECTION 9 — CONFIGURATION, NOTIFICATIONS & AUDIT in
 
 API names: Get Configs, Update Config, Get Zones, Get Service Types, Get Pricing, Get SLA Configs, Get Holiday Calendar, Upload CMS Block
 
+ServiceCatalogAdminController (/api/admin/services, Policy=LookupManage) — service & category CRUD [2026-06-14]:
+  GET catalog (categories+services+pricingModels, incl inactive), POST/PUT/DELETE categories/{id},
+  POST/PUT/DELETE services/{id}, PUT {id}/image. EF-Core writes, hard delete with referential guards.
+  Tables: tblServiceCategory, tblService, tblPricingModel. Full contract in ProjectOverview SECTION 9.
+
 DB tables: SystemConfigs, Zones, EquipmentCatalog, JobStatusWorkflow, SLAConfigurations, BusinessHours, HolidayCalendar
 
 Screens: Master Data List, Service Type Editor, Zone Manager, Pricing Matrix, SLA Config Editor, Role & Permission Manager
