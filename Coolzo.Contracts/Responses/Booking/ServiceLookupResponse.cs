@@ -7,4 +7,5 @@ public sealed record ServiceLookupResponse(
     string Summary,
     decimal BasePrice,
     string PricingModelName,
-    string ImageUrl);
+    string ImageUrl,
+    string ImageAIPrompt = "");

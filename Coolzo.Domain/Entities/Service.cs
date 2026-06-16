@@ -17,6 +17,13 @@ public sealed class Service : AuditableEntity
     /// <summary>Optional admin-managed service image (object-storage public URL). Null = use UI fallback.</summary>
     public string? ImageUrl { get; set; }
 
+    /// <summary>
+    /// Optional admin-managed AI image-generation prompt for this service's image. Lets an admin
+    /// store a tuned, reusable prompt so regenerating the image is one-click and consistent.
+    /// Null/empty = the admin UI shows a generated suggested prompt instead.
+    /// </summary>
+    public string? ImageAIPrompt { get; set; }
+
     public int EstimatedDurationInMinutes { get; set; }
 
     public decimal BasePrice { get; set; }

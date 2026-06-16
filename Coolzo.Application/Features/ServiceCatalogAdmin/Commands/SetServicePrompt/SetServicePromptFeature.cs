@@ -7,36 +7,36 @@ using Coolzo.Shared.Models;
 using FluentValidation;
 using MediatR;
 
-namespace Coolzo.Application.Features.ServiceCatalogAdmin.Commands.SetServiceImage;
+namespace Coolzo.Application.Features.ServiceCatalogAdmin.Commands.SetServicePrompt;
 
-public sealed record SetServiceImageCommand(long ServiceId, string? ImageUrl)
+public sealed record SetServicePromptCommand(long ServiceId, string? ImageAIPrompt)
     : IRequest<ServiceLookupResponse>;
 
-public sealed class SetServiceImageCommandValidator : AbstractValidator<SetServiceImageCommand>
+public sealed class SetServicePromptCommandValidator : AbstractValidator<SetServicePromptCommand>
 {
-    public SetServiceImageCommandValidator()
+    public SetServicePromptCommandValidator()
     {
         RuleFor(request => request.ServiceId).GreaterThan(0);
-        RuleFor(request => request.ImageUrl).MaximumLength(512);
+        RuleFor(request => request.ImageAIPrompt).MaximumLength(1024);
     }
 }
 
-public sealed class SetServiceImageCommandHandler : IRequestHandler<SetServiceImageCommand, ServiceLookupResponse>
+public sealed class SetServicePromptCommandHandler : IRequestHandler<SetServicePromptCommand, ServiceLookupResponse>
 {
     private readonly AdminActivityLogger _adminActivityLogger;
     private readonly IBookingLookupRepository _bookingLookupRepository;
     private readonly ICurrentDateTime _currentDateTime;
     private readonly ICurrentUserContext _currentUserContext;
-    private readonly IAppLogger<SetServiceImageCommandHandler> _logger;
+    private readonly IAppLogger<SetServicePromptCommandHandler> _logger;
     private readonly IUnitOfWork _unitOfWork;
 
-    public SetServiceImageCommandHandler(
+    public SetServicePromptCommandHandler(
         IBookingLookupRepository bookingLookupRepository,
         IUnitOfWork unitOfWork,
         ICurrentDateTime currentDateTime,
         ICurrentUserContext currentUserContext,
         AdminActivityLogger adminActivityLogger,
-        IAppLogger<SetServiceImageCommandHandler> logger)
+        IAppLogger<SetServicePromptCommandHandler> logger)
     {
         _bookingLookupRepository = bookingLookupRepository;
         _unitOfWork = unitOfWork;
@@ -46,27 +46,27 @@ public sealed class SetServiceImageCommandHandler : IRequestHandler<SetServiceIm
         _logger = logger;
     }
 
-    public async Task<ServiceLookupResponse> Handle(SetServiceImageCommand request, CancellationToken cancellationToken)
+    public async Task<ServiceLookupResponse> Handle(SetServicePromptCommand request, CancellationToken cancellationToken)
     {
         var service = await _bookingLookupRepository.GetServiceByIdAsync(request.ServiceId, cancellationToken)
             ?? throw new AppException(ErrorCodes.NotFound, "The requested service could not be found.", 404);
 
-        var imageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
-        service.ImageUrl = imageUrl;
+        var prompt = string.IsNullOrWhiteSpace(request.ImageAIPrompt) ? null : request.ImageAIPrompt.Trim();
+        service.ImageAIPrompt = prompt;
         service.UpdatedBy = _currentUserContext.UserName;
         service.LastUpdated = _currentDateTime.UtcNow;
 
         await _adminActivityLogger.WriteAsync(
-            "SetServiceImage",
+            "SetServicePrompt",
             nameof(Coolzo.Domain.Entities.Service),
             service.ServiceId.ToString(),
-            imageUrl ?? "(cleared)",
+            prompt is null ? "(cleared)" : "(updated)",
             cancellationToken);
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
-            "Service image {Action} for ServiceId {ServiceId} by {UserName}.",
-            imageUrl is null ? "cleared" : "set",
+            "Service AI image prompt {Action} for ServiceId {ServiceId} by {UserName}.",
+            prompt is null ? "cleared" : "set",
             service.ServiceId,
             _currentUserContext.UserName);
 

@@ -13,6 +13,7 @@ internal static class ServiceCatalogMapper
             category.CategoryName,
             category.Description,
             category.ImageUrl,
+            category.ImageAIPrompt,
             category.IsActive,
             category.SortOrder,
             serviceCount);
@@ -29,6 +30,7 @@ internal static class ServiceCatalogMapper
             service.BasePrice,
             service.EstimatedDurationInMinutes,
             service.ImageUrl,
+            service.ImageAIPrompt,
             service.IsActive,
             service.SortOrder);
 

@@ -12,6 +12,7 @@ public sealed record CreateServiceCategoryCommand(
     string? CategoryCode,
     string? Description,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder) : IRequest<ServiceCategoryAdminResponse>;
 
@@ -23,6 +24,7 @@ public sealed class CreateServiceCategoryCommandValidator : AbstractValidator<Cr
         RuleFor(request => request.CategoryCode).MaximumLength(64);
         RuleFor(request => request.Description).MaximumLength(512);
         RuleFor(request => request.ImageUrl).MaximumLength(512);
+        RuleFor(request => request.ImageAIPrompt).MaximumLength(1024);
     }
 }
 
@@ -56,6 +58,7 @@ public sealed class CreateServiceCategoryCommandHandler
                 : request.CategoryCode.Trim(),
             Description = request.Description?.Trim() ?? string.Empty,
             ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim(),
+            ImageAIPrompt = string.IsNullOrWhiteSpace(request.ImageAIPrompt) ? null : request.ImageAIPrompt.Trim(),
             IsActive = request.IsActive,
             SortOrder = request.SortOrder,
             CreatedBy = _currentUserContext.UserName,

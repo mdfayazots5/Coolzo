@@ -6,6 +6,7 @@ public sealed record ServiceCategoryUpsertRequest(
     string? CategoryCode,
     string? Description,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder);
 
@@ -19,5 +20,6 @@ public sealed record ServiceUpsertRequest(
     decimal BasePrice,
     int EstimatedDurationInMinutes,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder);

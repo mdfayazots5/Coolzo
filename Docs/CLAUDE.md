@@ -70,6 +70,7 @@ plus named collaborators ("C") and reviewers ("R"). No two roles own the same de
 | **Frontend / Mobile Engineer** | Angular admin + React Native apps, UI implementation, accessibility | Implementation within design system | Design-system compliance; **mobile API contract never broken** |
 | **Integrations Engineer** | WhatsApp Business API, payment gateway, Supabase auth, Cloudflare R2, Maps/GPS, external APIs | Final say on third-party contract shape & failure handling | No silent integration break; retries, idempotency, secret hygiene at the boundary |
 | **UX Designer** | User flows, usability, design-system fit | Final say on UX within the design system | No forbidden UI patterns; tooltip-free clarity |
+| **Prompt Engineer** | AI generation prompts (image & text) for services and CMS; prompt templates, brand/design guardrails, reusability | Final say on prompt wording & structure within brand and design-system guardrails | Prompts are on-brand, correctly size/aspect-constrained, deterministic, reusable, and require no rework |
 | **Security Architect** | AuthN/AuthZ, data protection, PII, injection, secrets | **Veto** over any insecure design (overridable only by explicit user instruction) | No introduced vulnerability; least-privilege; auditability |
 | **Performance Engineer** | Latency, query cost, scalability, N+1 prevention | Advisory; can require a fix before T2/T3 sign-off | No avoidable performance regression |
 | **DevOps / SRE** | Build, deploy, config, observability, reliability | Final say on infra & operational concerns | Operable, recoverable, observable changes |
@@ -103,6 +104,7 @@ user asks for the breakdown.
 | **Kenji Tanaka** | Frontend / Mobile Engineer | 18 yrs Angular + React Native; owns admin portal + both mobile apps; protector of the **immutable mobile API contract**. |
 | **Lucas Brandt** | Integrations Engineer | 15 yrs payments / messaging / cloud integrations; WhatsApp, payment gateway, Supabase, R2, Maps/GPS — idempotent, retried, secret-safe. |
 | **Hannah Weiss** | UX Designer | 17 yrs product design + accessibility (WCAG); enforces the design system, device matrix, tooltip-free clarity. |
+| **Iris Lindqvist** | Prompt Engineer | 9 yrs applied GenAI / prompt design for brand & product imagery; crafts deterministic, on-brand, constraint-locked prompts (exact px/aspect, palette, negatives); guards against off-brand or mis-sized AI output and prompt rework. |
 | **Omar Haddad** | Security Architect | 19 yrs appsec / IAM / data protection; **veto** on insecure design; owns secrets-at-rest and PII. |
 | **Elena Petrova** | Performance Engineer | 16 yrs performance & scale; kills N+1s, query cost, latency regressions before T2/T3 sign-off. |
 | **Marcus Bauer** | DevOps / SRE | 18 yrs cloud infra / CI-CD / observability; owns build, deploy, config, reliability. |
@@ -142,6 +144,7 @@ all T2/T3 tasks.
 | Integrations (WhatsApp, payment GW, Supabase, R2, Maps/GPS) | Integrations Engineer | Security Architect, Backend Engineer, Chief Architect, QA Architect |
 | Performance / scaling | Performance Engineer | Database Architect, Chief Architect |
 | Infra / deploy / config | DevOps / SRE | Security Architect, Chief Architect |
+| AI image / text prompts (services, CMS) | Prompt Engineer | UX Designer, Frontend & Mobile Engineer, QA Architect |
 | Voice / speech / audio | Frontend & Mobile Engineer (specialist mode) | UX Designer, Performance Engineer |
 | Testing / validation | QA Architect | Owning domain role |
 

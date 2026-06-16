@@ -7,6 +7,7 @@ public sealed record ServiceCategoryAdminResponse(
     string CategoryName,
     string Description,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder,
     int ServiceCount);
@@ -23,6 +24,7 @@ public sealed record ServiceAdminResponse(
     decimal BasePrice,
     int EstimatedDurationInMinutes,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder);
 

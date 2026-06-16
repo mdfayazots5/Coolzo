@@ -25,7 +25,8 @@ public sealed class GetServicesQueryHandler : IRequestHandler<GetServicesQuery, 
                 service.Summary,
                 service.BasePrice,
                 service.PricingModel?.PricingModelName ?? string.Empty,
-                service.ImageUrl ?? string.Empty))
+                service.ImageUrl ?? string.Empty,
+                service.ImageAIPrompt ?? string.Empty))
             .ToArray();
     }
 }

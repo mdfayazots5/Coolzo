@@ -18,6 +18,7 @@ public sealed record CreateServiceCommand(
     decimal BasePrice,
     int EstimatedDurationInMinutes,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder) : IRequest<ServiceAdminResponse>;
 
@@ -33,6 +34,7 @@ public sealed class CreateServiceCommandValidator : AbstractValidator<CreateServ
         RuleFor(request => request.BasePrice).GreaterThanOrEqualTo(0);
         RuleFor(request => request.EstimatedDurationInMinutes).GreaterThanOrEqualTo(0);
         RuleFor(request => request.ImageUrl).MaximumLength(512);
+        RuleFor(request => request.ImageAIPrompt).MaximumLength(1024);
     }
 }
 
@@ -74,6 +76,7 @@ public sealed class CreateServiceCommandHandler : IRequestHandler<CreateServiceC
             BasePrice = request.BasePrice,
             EstimatedDurationInMinutes = request.EstimatedDurationInMinutes,
             ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim(),
+            ImageAIPrompt = string.IsNullOrWhiteSpace(request.ImageAIPrompt) ? null : request.ImageAIPrompt.Trim(),
             IsActive = request.IsActive,
             SortOrder = request.SortOrder,
             CreatedBy = _currentUserContext.UserName,

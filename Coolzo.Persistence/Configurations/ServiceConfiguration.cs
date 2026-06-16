@@ -16,6 +16,7 @@ public sealed class ServiceConfiguration : IEntityTypeConfiguration<Service>
         builder.Property(entity => entity.ServiceName).HasMaxLength(128).IsRequired();
         builder.Property(entity => entity.Summary).HasMaxLength(512).IsRequired();
         builder.Property(entity => entity.ImageUrl).HasMaxLength(512);
+        builder.Property(entity => entity.ImageAIPrompt).HasMaxLength(1024);
         builder.Property(entity => entity.EstimatedDurationInMinutes).HasDefaultValue(60);
         builder.Property(entity => entity.BasePrice).HasColumnType("numeric(18,2)");
         builder.Property(entity => entity.IsActive).HasDefaultValue(true);

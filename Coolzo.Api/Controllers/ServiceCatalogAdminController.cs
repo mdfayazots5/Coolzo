@@ -3,6 +3,7 @@ using Coolzo.Application.Features.ServiceCatalogAdmin.Commands.CreateServiceCate
 using Coolzo.Application.Features.ServiceCatalogAdmin.Commands.DeleteService;
 using Coolzo.Application.Features.ServiceCatalogAdmin.Commands.DeleteServiceCategory;
 using Coolzo.Application.Features.ServiceCatalogAdmin.Commands.SetServiceImage;
+using Coolzo.Application.Features.ServiceCatalogAdmin.Commands.SetServicePrompt;
 using Coolzo.Application.Features.ServiceCatalogAdmin.Commands.UpdateService;
 using Coolzo.Application.Features.ServiceCatalogAdmin.Commands.UpdateServiceCategory;
 using Coolzo.Application.Features.ServiceCatalogAdmin.Queries.GetServiceCatalogAdmin;
@@ -45,7 +46,7 @@ public sealed class ServiceCatalogAdminController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(
-            new CreateServiceCategoryCommand(request.CategoryName, request.CategoryCode, request.Description, request.ImageUrl, request.IsActive, request.SortOrder),
+            new CreateServiceCategoryCommand(request.CategoryName, request.CategoryCode, request.Description, request.ImageUrl, request.ImageAIPrompt, request.IsActive, request.SortOrder),
             cancellationToken);
 
         return Success(response, "Service category created successfully.");
@@ -59,7 +60,7 @@ public sealed class ServiceCatalogAdminController : ApiControllerBase
         CancellationToken cancellationToken)
     {
         var response = await _sender.Send(
-            new UpdateServiceCategoryCommand(serviceCategoryId, request.CategoryName, request.CategoryCode, request.Description, request.ImageUrl, request.IsActive, request.SortOrder),
+            new UpdateServiceCategoryCommand(serviceCategoryId, request.CategoryName, request.CategoryCode, request.Description, request.ImageUrl, request.ImageAIPrompt, request.IsActive, request.SortOrder),
             cancellationToken);
 
         return Success(response, "Service category updated successfully.");
@@ -85,7 +86,7 @@ public sealed class ServiceCatalogAdminController : ApiControllerBase
         var response = await _sender.Send(
             new CreateServiceCommand(
                 request.ServiceCategoryId, request.PricingModelId, request.ServiceName, request.ServiceCode,
-                request.Summary, request.BasePrice, request.EstimatedDurationInMinutes, request.ImageUrl, request.IsActive, request.SortOrder),
+                request.Summary, request.BasePrice, request.EstimatedDurationInMinutes, request.ImageUrl, request.ImageAIPrompt, request.IsActive, request.SortOrder),
             cancellationToken);
 
         return Success(response, "Service created successfully.");
@@ -101,7 +102,7 @@ public sealed class ServiceCatalogAdminController : ApiControllerBase
         var response = await _sender.Send(
             new UpdateServiceCommand(
                 serviceId, request.ServiceCategoryId, request.PricingModelId, request.ServiceName, request.ServiceCode,
-                request.Summary, request.BasePrice, request.EstimatedDurationInMinutes, request.ImageUrl, request.IsActive, request.SortOrder),
+                request.Summary, request.BasePrice, request.EstimatedDurationInMinutes, request.ImageUrl, request.ImageAIPrompt, request.IsActive, request.SortOrder),
             cancellationToken);
 
         return Success(response, "Service updated successfully.");
@@ -130,5 +131,20 @@ public sealed class ServiceCatalogAdminController : ApiControllerBase
             cancellationToken);
 
         return Success(response, "Service image updated successfully.");
+    }
+
+    // ── Service AI image prompt ────────────────────────────────────────────────────────────────────
+    [HttpPut("{serviceId:long}/image-prompt")]
+    [Authorize(Policy = PermissionNames.LookupManage)]
+    public async Task<ActionResult<ApiResponse<ServiceLookupResponse>>> SetPromptAsync(
+        [FromRoute] long serviceId,
+        [FromBody] SetServicePromptRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await _sender.Send(
+            new SetServicePromptCommand(serviceId, request.ImageAIPrompt),
+            cancellationToken);
+
+        return Success(response, "Service image prompt updated successfully.");
     }
 }

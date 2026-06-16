@@ -20,6 +20,7 @@ public sealed record UpdateServiceCommand(
     decimal BasePrice,
     int EstimatedDurationInMinutes,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder) : IRequest<ServiceAdminResponse>;
 
@@ -36,6 +37,7 @@ public sealed class UpdateServiceCommandValidator : AbstractValidator<UpdateServ
         RuleFor(request => request.BasePrice).GreaterThanOrEqualTo(0);
         RuleFor(request => request.EstimatedDurationInMinutes).GreaterThanOrEqualTo(0);
         RuleFor(request => request.ImageUrl).MaximumLength(512);
+        RuleFor(request => request.ImageAIPrompt).MaximumLength(1024);
     }
 }
 
@@ -81,6 +83,7 @@ public sealed class UpdateServiceCommandHandler : IRequestHandler<UpdateServiceC
         service.BasePrice = request.BasePrice;
         service.EstimatedDurationInMinutes = request.EstimatedDurationInMinutes;
         service.ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
+        service.ImageAIPrompt = string.IsNullOrWhiteSpace(request.ImageAIPrompt) ? null : request.ImageAIPrompt.Trim();
         service.IsActive = request.IsActive;
         service.SortOrder = request.SortOrder;
         service.UpdatedBy = _currentUserContext.UserName;

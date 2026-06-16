@@ -16,6 +16,7 @@ public sealed record UpdateServiceCategoryCommand(
     string? CategoryCode,
     string? Description,
     string? ImageUrl,
+    string? ImageAIPrompt,
     bool IsActive,
     int SortOrder) : IRequest<ServiceCategoryAdminResponse>;
 
@@ -28,6 +29,7 @@ public sealed class UpdateServiceCategoryCommandValidator : AbstractValidator<Up
         RuleFor(request => request.CategoryCode).MaximumLength(64);
         RuleFor(request => request.Description).MaximumLength(512);
         RuleFor(request => request.ImageUrl).MaximumLength(512);
+        RuleFor(request => request.ImageAIPrompt).MaximumLength(1024);
     }
 }
 
@@ -65,6 +67,7 @@ public sealed class UpdateServiceCategoryCommandHandler
             : request.CategoryCode.Trim();
         category.Description = request.Description?.Trim() ?? string.Empty;
         category.ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
+        category.ImageAIPrompt = string.IsNullOrWhiteSpace(request.ImageAIPrompt) ? null : request.ImageAIPrompt.Trim();
         category.IsActive = request.IsActive;
         category.SortOrder = request.SortOrder;
         category.UpdatedBy = _currentUserContext.UserName;
